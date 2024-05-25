@@ -1,0 +1,18 @@
+[package]
+name = "tantivy-go"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "force-build"
+path = "src/build.rs"
+
+[lib]
+crate-type = ["staticlib"]
+
+[build-dependencies]
+cbindgen = "0.26.0"
+
+[dependencies]
+tantivy = "0.22.0"
+cbindgen = "0.26.0"
