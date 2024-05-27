@@ -16,3 +16,5 @@ cbindgen = "0.26.0"
 [dependencies]
 tantivy = "0.22.0"
 cbindgen = "0.26.0"
+log = "0.4.21"
+env_logger = "0.11.3"
