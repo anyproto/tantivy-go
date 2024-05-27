@@ -3,20 +3,25 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef struct Example Example;
+typedef struct Index Index;
+typedef struct SchemaBuilder SchemaBuilder;
 
-struct Example *create_example(const char *name);
+SchemaBuilder *schema_builder_new(void);
 
-void example_set_name(struct Example *example_ptr, const char *name_ptr);
+void schema_builder_add_text_field(SchemaBuilder *builder, const char *name, bool stored);
 
-const char *example_get_name(const struct Example *example_ptr);
+Index *create_index_with_schema_builder(const char *path, SchemaBuilder *builder);
 
-const char *const *example_get_arr(const struct Example *example_ptr);
+Index *create_index(const char *path);
 
-void delete_example(struct Example *ptr);
+bool add_document(Index *index_ptr, const char *title, const char *body);
 
-/**
- * # Safety
- *
- */
+char *search_index(Index *index_ptr, const char *query);
+
+void free_index(Index *index_ptr);
+
+void free_string(char *s);
+
+void free_schema_builder(SchemaBuilder *builder_ptr);
+
 uint8_t init(void);

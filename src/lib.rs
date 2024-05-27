@@ -1,118 +1,169 @@
-use std::ffi::{c_char, CStr, CString};
-use tantivy::columnar::ColumnType::Str;
+use std::ffi::{CStr, CString};
+use std::os::raw::c_char;
+use std::ptr;
 use log::debug;
+use tantivy::{Index, schema::*};
+use tantivy::directory::MmapDirectory;
 
-mod build;
-
-trait ExampleModifier {
-    fn change_id(&mut self, newId: &str);
-}
-struct Example {
-    pub(crate) id: String
+#[no_mangle]
+pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
+    Box::into_raw(Box::new(Schema::builder()))
 }
 
-impl Example {
-    fn new(id: &str) -> Example {
-        return Example {
-            id: String::from(id)
+#[no_mangle]
+pub extern "C" fn schema_builder_add_text_field(builder: *mut SchemaBuilder, name: *const c_char, stored: bool) {
+    let builder = unsafe {
+        assert!(!builder.is_null());
+        &mut *builder
+    };
+
+    let name_str = unsafe { CStr::from_ptr(name) }.to_str().unwrap();
+    if stored {
+        builder.add_text_field(name_str, TEXT | STORED);
+    } else {
+        builder.add_text_field(name_str, TEXT);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn create_index_with_schema_builder(path: *const c_char, builder: *mut SchemaBuilder) -> *mut Index {
+    let c_str = unsafe { CStr::from_ptr(path) };
+    let path_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let builder = unsafe {
+        assert!(!builder.is_null());
+        Box::from_raw(builder)
+    };
+
+    let schema = builder.build();
+    let dir = match MmapDirectory::open(path_str) {
+        Ok(dir) => dir,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match Index::open_or_create(dir, schema) {
+        Ok(index) => Box::into_raw(Box::new(index)),
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn create_index(path: *const c_char) -> *mut Index {
+    let c_str = unsafe { CStr::from_ptr(path) };
+    let path_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let mut schema_builder = Schema::builder();
+    let title = schema_builder.add_text_field("title", TEXT | STORED);
+    let body = schema_builder.add_text_field("body", TEXT);
+    let schema = schema_builder.build();
+
+    let dir = match MmapDirectory::open(path_str) {
+        Ok(dir) => dir,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match Index::open_or_create(dir, schema) {
+        Ok(index) => Box::into_raw(Box::new(index)),
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn add_document(index_ptr: *mut Index, title: *const c_char, body: *const c_char) -> bool {
+    let index = unsafe {
+        assert!(!index_ptr.is_null());
+        &mut *index_ptr
+    };
+
+    let title_str = unsafe { CStr::from_ptr(title) }.to_str().unwrap();
+    let body_str = unsafe { CStr::from_ptr(body) }.to_str().unwrap();
+
+    let mut index_writer = match index.writer(50_000_000) {
+        Ok(writer) => writer,
+        Err(_) => return false,
+    };
+
+    let schema = index.schema();
+    let mut doc = TantivyDocument::default();
+    doc.add_text(schema.get_field("title").unwrap(), title_str);
+    doc.add_text(schema.get_field("body").unwrap(), body_str);
+
+    index_writer.add_document(doc);
+    index_writer.commit().is_ok()
+}
+
+#[no_mangle]
+pub extern "C" fn search_index(index_ptr: *mut Index, query: *const c_char) -> *mut c_char {
+    let index = unsafe {
+        assert!(!index_ptr.is_null());
+        &mut *index_ptr
+    };
+
+    let query_str = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
+
+    let reader = match index.reader() {
+        Ok(reader) => reader,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let searcher = reader.searcher();
+    let schema = index.schema();
+    let title = schema.get_field("title").unwrap();
+    let body = schema.get_field("body").unwrap();
+
+    let query_parser = tantivy::query::QueryParser::for_index(index, vec![title, body]);
+    let query = match query_parser.parse_query(query_str) {
+        Ok(query) => query,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let top_docs = match searcher.search(&query, &tantivy::collector::TopDocs::with_limit(10)) {
+        Ok(top_docs) => top_docs,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let mut result = String::new();
+    for (_score, doc_address) in top_docs {
+        let retrieved_doc = searcher.doc::<TantivyDocument>(doc_address).unwrap();
+        let json_doc = retrieved_doc.to_json(&schema);
+        result.push_str(&format!("{:?}\n", json_doc));
+    }
+
+    CString::new(result).unwrap().into_raw()
+}
+
+#[no_mangle]
+pub extern "C" fn free_index(index_ptr: *mut Index) {
+    if !index_ptr.is_null() {
+        unsafe {
+            Box::from_raw(index_ptr);
         }
     }
+}
 
-    fn get_arr(&self) -> Vec<String> {
-        return vec!["sd1".to_owned(), "sd2".to_owned()]
+#[no_mangle]
+pub extern "C" fn free_string(s: *mut c_char) {
+    if !s.is_null() {
+        unsafe {
+            CString::from_raw(s);
+        }
     }
 }
 
-impl ExampleModifier for Example {
-    fn change_id(&mut self, new_id: &str) {
-        self.id=String::from(new_id)
+#[no_mangle]
+pub extern "C" fn free_schema_builder(builder_ptr: *mut SchemaBuilder) {
+    if !builder_ptr.is_null() {
+        unsafe {
+            Box::from_raw(builder_ptr);
+        }
     }
 }
 
-#[no_mangle]
-pub extern "C" fn create_example(name: *const c_char) -> *mut Example {
-    let c_str = unsafe { CStr::from_ptr(name) };
-    let name = c_str.to_str().expect("Failed to convert CStr to str");
-    Box::into_raw(Box::new(Example::new(name)))
-}
-
-#[no_mangle]
-pub extern "C" fn example_set_name(example_ptr: *mut Example, name_ptr: *const c_char) {
-    let example = unsafe {
-        assert!(!example_ptr.is_null());
-        &mut *example_ptr
-    };
-
-    let name = unsafe {
-        assert!(!name_ptr.is_null());
-        CStr::from_ptr(name_ptr).to_string_lossy().into_owned()
-    };
-
-    example.change_id(&name);
-}
-
-#[no_mangle]
-pub extern "C" fn example_get_name(example_ptr: *const Example) -> *const c_char {
-    let example = unsafe {
-        assert!(!example_ptr.is_null());
-        &*example_ptr
-    };
-
-    let name = example.id.as_str(); // Получаем имя
-
-    // Конвертируем имя в строку C
-    let c_name = CString::new(name).expect("CString::new failed");
-    c_name.into_raw()
-}
-
-#[no_mangle]
-pub extern "C" fn example_get_arr(example_ptr: *const Example) -> *const *const c_char {
-    let example = unsafe {
-        assert!(!example_ptr.is_null());
-        &*example_ptr
-    };
-
-    debug!("{:?}", example.get_arr());
-
-    // Предположим, что example.get_arr() возвращает Vec<String>
-    let c_strings: Vec<CString> = example.get_arr().iter()
-        .map(|s| CString::new(s.as_str()).expect("CString::new failed"))
-        .collect();
-
-    // Создаем вектор указателей на строки C
-    let mut c_string_ptrs: Vec<*const c_char> = c_strings.iter()
-        .map(|s| s.as_ptr())
-        .collect();
-
-    // Добавляем завершающий NULL указатель
-    c_string_ptrs.push(std::ptr::null());
-
-    // Помещаем вектор в кучу, чтобы он не был освобожден при завершении функции
-    let c_string_ptrs_boxed = c_string_ptrs.into_boxed_slice();
-
-    // Получаем указатель на первый элемент массива указателей на строки C
-    let c_string_ptrs_ptr = c_string_ptrs_boxed.as_ptr();
-
-    // Запрещаем освобождение вектора при выходе из функции
-    std::mem::forget(c_strings); // Не освобождаем CString
-    std::mem::forget(c_string_ptrs_boxed);
-
-    c_string_ptrs_ptr
-}
-
-
-#[no_mangle]
-pub extern "C" fn delete_example(ptr: *mut Example) {
-    if ptr.is_null() {
-        return;
-    }
-    unsafe {
-        Box::from_raw(ptr);
-    }
-}
-
-/// # Safety
-///
 #[no_mangle]
 pub unsafe extern "C" fn init() -> u8 {
     let mut log_level: &str = "info";

@@ -28,75 +28,53 @@ func LibInit(directive ...string) {
 	})
 }
 
-// Example обертка над структурой Example из Си
-type Example struct {
-	ptr *C.Example
-}
-
-// CreateExample создает новый Example
-func CreateExample(name string) *Example {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
-
-	ptr := C.create_example(cName)
-	return &Example{ptr}
-}
-
-// SetName устанавливает имя для Example
-func (e *Example) SetName(name string) {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
-
-	C.example_set_name(e.ptr, cName)
-}
-
-func (e *Example) GetName() string {
-	// Вызываем функцию example_get_name из C
-	namePtr := C.example_get_name((*C.struct_Example)(e.ptr))
-	defer C.free(unsafe.Pointer(namePtr)) // Освобождаем память после использования
-
-	// Преобразуем указатель на char в строку Go
-	return C.GoString(namePtr)
-}
-
-func (e *Example) GetArr() []string {
-	var strings []string
-
-	// Call the C function to get the array of C strings.
-	cStringArray := C.example_get_arr(e.ptr)
-
-	// Iterate over the array of C strings until we find a NULL pointer.
-	for {
-		// Dereference the pointer to get a pointer to the current C string.
-		cStr := *(**C.char)(unsafe.Pointer(cStringArray))
-
-		// Check if we've reached the NULL pointer indicating the end of the array.
-		if cStr == nil {
-			break
-		}
-
-		// Convert the C string to a Go string and append it to the slice.
-		strings = append(strings, C.GoString(cStr))
-
-		// Move to the next C string in the array.
-		cStringArray = (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(cStringArray)) + unsafe.Sizeof(cStringArray)))
-	}
-
-	return strings
-}
-
-// DeleteExample освобождает память, выделенную под Example
-func (e *Example) DeleteExample() {
-	C.delete_example(e.ptr)
-}
-
 func main() {
 	LibInit("debug")
-	example := CreateExample("John")
-	fmt.Println(example.GetName())
-	example.SetName("Doe")
-	fmt.Println(example.GetName())
-	fmt.Println(example.GetArr())
-	example.DeleteExample()
-	fmt.Println("Example created, name set, and memory freed successfully")
+	path := C.CString("index_directory")
+	defer C.free(unsafe.Pointer(path))
+
+	title := C.CString("Example Title")
+	defer C.free(unsafe.Pointer(title))
+
+	body := C.CString("Example body content.")
+	defer C.free(unsafe.Pointer(body))
+
+	query := C.CString("Example")
+	defer C.free(unsafe.Pointer(query))
+
+	titleSchema := C.CString("title")
+	defer C.free(unsafe.Pointer(titleSchema))
+
+	bodySchema := C.CString("body")
+	defer C.free(unsafe.Pointer(bodySchema))
+
+	schema := C.schema_builder_new()
+
+	C.schema_builder_add_text_field(schema, titleSchema, C._Bool(true))
+	C.schema_builder_add_text_field(schema, bodySchema, C._Bool(false))
+
+	// Create index
+	index := C.create_index_with_schema_builder(path, schema)
+	if index == nil {
+		fmt.Println("Failed to create index")
+		return
+	}
+	defer C.free_index(index)
+
+	// Add document
+	success := C.add_document(index, title, body)
+	if success == C._Bool(false) {
+		fmt.Println("Failed to add document")
+		return
+	}
+
+	// Search index
+	result := C.search_index(index, query)
+	if result != nil {
+		fmt.Println("Search results:")
+		fmt.Println(C.GoString(result))
+		C.free_string(result)
+	} else {
+		fmt.Println("Failed to search index")
+	}
 }
