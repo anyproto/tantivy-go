@@ -5,18 +5,30 @@
 
 typedef struct Index Index;
 typedef struct SchemaBuilder SchemaBuilder;
+typedef struct TantivyDocument TantivyDocument;
 
-SchemaBuilder *schema_builder_new(void);
+SchemaBuilder *schema_builder_new(char **error_buffer);
 
-void schema_builder_add_text_field(SchemaBuilder *builder, const char *name, bool stored);
+int schema_builder_add_text_field(SchemaBuilder *builder,
+                                  const char *name,
+                                  bool stored,
+                                  char **error_buffer);
 
-Index *create_index_with_schema_builder(const char *path, SchemaBuilder *builder);
+Index *create_index_with_schema_builder(const char *path,
+                                        SchemaBuilder *builder,
+                                        char **error_buffer);
 
-Index *create_index(const char *path);
+TantivyDocument *create_document(void);
 
-bool add_document(Index *index_ptr, const char *title, const char *body);
+int add_field(TantivyDocument *doc_ptr,
+              const char *field_name,
+              const char *field_value,
+              Index *index_ptr,
+              char **error_buffer);
 
-char *search_index(Index *index_ptr, const char *query);
+int add_document(Index *index_ptr, TantivyDocument *doc_ptr, char **error_buffer);
+
+char *search_index(Index *index_ptr, const char *query, char **error_buffer);
 
 void free_index(Index *index_ptr);
 

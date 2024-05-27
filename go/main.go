@@ -28,8 +28,20 @@ func LibInit(directive ...string) {
 	})
 }
 
+func getLastError(errorBuffer **C.char) string {
+	if *errorBuffer != nil {
+		errStr := C.GoString(*errorBuffer)
+		C.free_string(*errorBuffer)
+		*errorBuffer = nil
+		return errStr
+	}
+	return ""
+}
+
 func main() {
 	LibInit("debug")
+	var errorBuffer *C.char
+
 	path := C.CString("index_directory")
 	defer C.free(unsafe.Pointer(path))
 
@@ -42,39 +54,67 @@ func main() {
 	query := C.CString("Example")
 	defer C.free(unsafe.Pointer(query))
 
-	titleSchema := C.CString("title")
-	defer C.free(unsafe.Pointer(titleSchema))
+	// Create schema builder
+	builder := C.schema_builder_new(&errorBuffer)
+	if builder == nil {
+		fmt.Println("Failed to create schema builder:", getLastError(&errorBuffer))
+		return
+	}
 
-	bodySchema := C.CString("body")
-	defer C.free(unsafe.Pointer(bodySchema))
+	// Add fields to schema
+	titleName := C.CString("title")
+	if C.schema_builder_add_text_field(builder, titleName, C._Bool(true), &errorBuffer) != 0 {
+		fmt.Println("Failed to add text field:", getLastError(&errorBuffer))
+		return
+	}
+	C.free(unsafe.Pointer(titleName))
 
-	schema := C.schema_builder_new()
+	bodyName := C.CString("body")
+	if C.schema_builder_add_text_field(builder, bodyName, C._Bool(false), &errorBuffer) != 0 {
+		fmt.Println("Failed to add text field:", getLastError(&errorBuffer))
+		return
+	}
+	C.free(unsafe.Pointer(bodyName))
 
-	C.schema_builder_add_text_field(schema, titleSchema, C._Bool(true))
-	C.schema_builder_add_text_field(schema, bodySchema, C._Bool(false))
-
-	// Create index
-	index := C.create_index_with_schema_builder(path, schema)
+	// Create index with schema builder
+	index := C.create_index_with_schema_builder(path, builder, &errorBuffer)
 	if index == nil {
-		fmt.Println("Failed to create index")
+		fmt.Println("Failed to create index:", getLastError(&errorBuffer))
 		return
 	}
 	defer C.free_index(index)
 
-	// Add document
-	success := C.add_document(index, title, body)
-	if success == C._Bool(false) {
-		fmt.Println("Failed to add document")
+	// Create document
+	doc := C.create_document()
+	if doc == nil {
+		fmt.Println("Failed to create document")
+		return
+	}
+
+	// Add fields to document
+	if C.add_field(doc, C.CString("title"), title, index, &errorBuffer) != 0 {
+		fmt.Println("Failed to add field to document:", getLastError(&errorBuffer))
+		return
+	}
+
+	if C.add_field(doc, C.CString("body"), body, index, &errorBuffer) != 0 {
+		fmt.Println("Failed to add field to document:", getLastError(&errorBuffer))
+		return
+	}
+
+	// Add document to index
+	if C.add_document(index, doc, &errorBuffer) != 0 {
+		fmt.Println("Failed to add document:", getLastError(&errorBuffer))
 		return
 	}
 
 	// Search index
-	result := C.search_index(index, query)
+	result := C.search_index(index, query, &errorBuffer)
 	if result != nil {
 		fmt.Println("Search results:")
 		fmt.Println(C.GoString(result))
 		C.free_string(result)
 	} else {
-		fmt.Println("Failed to search index")
+		fmt.Println("Failed to search index:", getLastError(&errorBuffer))
 	}
 }
