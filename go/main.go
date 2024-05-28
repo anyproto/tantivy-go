@@ -42,7 +42,7 @@ func main() {
 	LibInit("debug")
 	var errorBuffer *C.char
 
-	path := C.CString("index_directory")
+	path := C.CString("index_dir")
 	defer C.free(unsafe.Pointer(path))
 
 	title := C.CString("Example Title")
@@ -51,7 +51,7 @@ func main() {
 	body := C.CString("Example body content.")
 	defer C.free(unsafe.Pointer(body))
 
-	query := C.CString("Example")
+	query := C.CString("body")
 	defer C.free(unsafe.Pointer(query))
 
 	// Create schema builder
@@ -70,14 +70,22 @@ func main() {
 	C.free(unsafe.Pointer(titleName))
 
 	bodyName := C.CString("body")
-	if C.schema_builder_add_text_field(builder, bodyName, C._Bool(false), &errorBuffer) != 0 {
+	if C.schema_builder_add_text_field(builder, bodyName, C._Bool(true), &errorBuffer) != 0 {
 		fmt.Println("Failed to add text field:", getLastError(&errorBuffer))
 		return
 	}
 	C.free(unsafe.Pointer(bodyName))
 
-	// Create index with schema builder
-	index := C.create_index_with_schema_builder(path, builder, &errorBuffer)
+	// Build schema
+	schema := C.build_schema(builder, &errorBuffer)
+	if schema == nil {
+		fmt.Println("Failed to build schema:", getLastError(&errorBuffer))
+		return
+	}
+	defer C.free_schema(schema)
+
+	// Create index with schema
+	index := C.create_index_with_schema(path, schema, &errorBuffer)
 	if index == nil {
 		fmt.Println("Failed to create index:", getLastError(&errorBuffer))
 		return
@@ -123,7 +131,7 @@ func main() {
 			break
 		}
 		// Get JSON representation of the document
-		jsonStr := C.get_document_json(doc, &errorBuffer)
+		jsonStr := C.get_document_json(doc, schema, &errorBuffer)
 		if jsonStr != nil {
 			fmt.Println("Document JSON:")
 			fmt.Println(C.GoString(jsonStr))

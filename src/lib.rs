@@ -68,16 +68,7 @@ pub extern "C" fn schema_builder_add_text_field(builder: *mut SchemaBuilder, nam
 }
 
 #[no_mangle]
-pub extern "C" fn create_index_with_schema_builder(path: *const c_char, builder: *mut SchemaBuilder, error_buffer: *mut *mut c_char) -> *mut Index {
-    let c_str = unsafe { CStr::from_ptr(path) };
-    let path_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return ptr::null_mut();
-        }
-    };
-
+pub extern "C" fn build_schema(builder: *mut SchemaBuilder, error_buffer: *mut *mut c_char) -> *mut Schema {
     let builder = unsafe {
         if builder.is_null() {
             set_error("SchemaBuilder is null", error_buffer);
@@ -87,6 +78,28 @@ pub extern "C" fn create_index_with_schema_builder(path: *const c_char, builder:
     };
 
     let schema = builder.build();
+    Box::into_raw(Box::new(schema))
+}
+
+#[no_mangle]
+pub extern "C" fn create_index_with_schema(path: *const c_char, schema: *mut Schema, error_buffer: *mut *mut c_char) -> *mut Index {
+    let c_str = unsafe { CStr::from_ptr(path) };
+    let path_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            return ptr::null_mut();
+        }
+    };
+
+    let schema = unsafe {
+        if schema.is_null() {
+            set_error("Schema is null", error_buffer);
+            return ptr::null_mut();
+        }
+        &*schema
+    };
+
     let dir = match MmapDirectory::open(path_str) {
         Ok(dir) => dir,
         Err(err) => {
@@ -95,7 +108,7 @@ pub extern "C" fn create_index_with_schema_builder(path: *const c_char, builder:
         }
     };
 
-    match Index::open_or_create(dir, schema) {
+    match Index::open_or_create(dir, schema.clone()) {
         Ok(index) => Box::into_raw(Box::new(index)),
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
@@ -281,7 +294,7 @@ pub extern "C" fn get_next_result(result_ptr: *mut SearchResult, error_buffer: *
 }
 
 #[no_mangle]
-pub extern "C" fn get_document_json(doc_ptr: *mut TantivyDocument, error_buffer: *mut *mut c_char) -> *mut c_char {
+pub extern "C" fn get_document_json(doc_ptr: *mut TantivyDocument, schema: *mut Schema, error_buffer: *mut *mut c_char) -> *mut c_char {
     let doc = unsafe {
         if doc_ptr.is_null() {
             set_error("Document is null", error_buffer);
@@ -290,15 +303,15 @@ pub extern "C" fn get_document_json(doc_ptr: *mut TantivyDocument, error_buffer:
         &*doc_ptr
     };
 
-    let json_doc = match serde_json::to_string(doc) {
-        Ok(json) => json,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
+    let schema = unsafe {
+        if schema.is_null() {
+            set_error("Schema is null", error_buffer);
             return ptr::null_mut();
         }
+        &*schema
     };
 
-    match CString::new(json_doc) {
+    match CString::new(doc.to_json(schema)) {
         Ok(cstr) => cstr.into_raw(),
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
@@ -339,6 +352,15 @@ pub extern "C" fn free_schema_builder(builder_ptr: *mut SchemaBuilder) {
     if !builder_ptr.is_null() {
         unsafe {
             Box::from_raw(builder_ptr);
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn free_schema(schema_ptr: *mut Schema) {
+    if !schema_ptr.is_null() {
+        unsafe {
+            Box::from_raw(schema_ptr);
         }
     }
 }
