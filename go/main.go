@@ -110,11 +110,19 @@ func main() {
 
 	// Search index
 	result := C.search_index(index, query, &errorBuffer)
-	if result != nil {
-		fmt.Println("Search results:")
-		fmt.Println(C.GoString(result))
-		C.free_string(result)
-	} else {
+	if result == nil {
 		fmt.Println("Failed to search index:", getLastError(&errorBuffer))
+		return
+	}
+	defer C.free_search_result(result)
+
+	// Iterate through search results
+	for {
+		doc := C.get_next_result(result, &errorBuffer)
+		if doc == nil {
+			break
+		}
+		// Process the document here
+		fmt.Println("Document found")
 	}
 }

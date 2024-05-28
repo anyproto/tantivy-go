@@ -6,6 +6,11 @@ use tantivy::{Index, schema::*};
 use tantivy::directory::MmapDirectory;
 use tantivy::doc as TantivyDocument;
 
+pub struct SearchResult {
+    documents: Vec<TantivyDocument>,
+    index: usize,
+}
+
 fn set_error(err: &str, error_buffer: *mut *mut c_char) -> c_int {
     let err_str = match CString::new(err) {
         Ok(s) => s,
@@ -179,7 +184,8 @@ pub extern "C" fn add_document(index_ptr: *mut Index, doc_ptr: *mut TantivyDocum
 }
 
 #[no_mangle]
-pub extern "C" fn search_index(index_ptr: *mut Index, query: *const c_char, error_buffer: *mut *mut c_char) -> *mut c_char {
+#[no_mangle]
+pub extern "C" fn search_index(index_ptr: *mut Index, query: *const c_char, error_buffer: *mut *mut c_char) -> *mut SearchResult {
     let index = unsafe {
         if index_ptr.is_null() {
             set_error("Index is null", error_buffer);
@@ -239,26 +245,49 @@ pub extern "C" fn search_index(index_ptr: *mut Index, query: *const c_char, erro
         }
     };
 
-    let mut result = String::new();
+    let mut documents = Vec::new();
     for (_score, doc_address) in top_docs {
-        let retrieved_doc = match searcher.doc::<TantivyDocument>(doc_address) {
-            Ok(doc) => doc,
+        match searcher.doc(doc_address) {
+            Ok(doc) => documents.push(doc),
             Err(err) => {
                 set_error(&err.to_string(), error_buffer);
                 return ptr::null_mut();
             }
         };
-        let json_doc = retrieved_doc.to_json(&schema);
-        result.push_str(&format!("{:?}\n", json_doc));
     }
 
-    return match CString::new(result) {
-        Ok(s) => s.into_raw(),
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            ptr::null_mut()
+    Box::into_raw(Box::new(SearchResult {
+        documents,
+        index: 0,
+    }))
+}
+
+#[no_mangle]
+pub extern "C" fn get_next_result(result_ptr: *mut SearchResult, error_buffer: *mut *mut c_char) -> *mut TantivyDocument {
+    let result = unsafe {
+        if result_ptr.is_null() {
+            set_error("SearchResult is null", error_buffer);
+            return ptr::null_mut();
         }
+        &mut *result_ptr
     };
+
+    if result.index >= result.documents.len() {
+        return ptr::null_mut();
+    }
+
+    let doc = &result.documents[result.index];
+    result.index += 1;
+    Box::into_raw(Box::new(doc.clone()))
+}
+
+#[no_mangle]
+pub extern "C" fn free_search_result(result_ptr: *mut SearchResult) {
+    if !result_ptr.is_null() {
+        unsafe {
+            Box::from_raw(result_ptr);
+        }
+    }
 }
 
 #[no_mangle]

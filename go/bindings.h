@@ -6,6 +6,7 @@
 typedef struct Index Index;
 typedef struct SchemaBuilder SchemaBuilder;
 typedef struct TantivyDocument TantivyDocument;
+typedef struct SearchResult SearchResult;
 
 SchemaBuilder *schema_builder_new(char **error_buffer);
 
@@ -28,7 +29,11 @@ int add_field(TantivyDocument *doc_ptr,
 
 int add_document(Index *index_ptr, TantivyDocument *doc_ptr, char **error_buffer);
 
-char *search_index(Index *index_ptr, const char *query, char **error_buffer);
+SearchResult *search_index(Index *index_ptr, const char *query, char **error_buffer);
+
+TantivyDocument *get_next_result(struct SearchResult *result_ptr, char **error_buffer);
+
+void free_search_result(struct SearchResult *result_ptr);
 
 void free_index(Index *index_ptr);
 
