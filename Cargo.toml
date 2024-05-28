@@ -2,10 +2,7 @@
 name = "tantivy-go"
 version = "0.1.0"
 edition = "2021"
-
-[[bin]]
-name = "force-build"
-path = "src/build.rs"
+build = "src/build.rs"
 
 [lib]
 crate-type = ["staticlib"]

@@ -1,13 +1,10 @@
+#include <binding_typedefs.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef struct Index Index;
-typedef struct SchemaBuilder SchemaBuilder;
-typedef struct TantivyDocument TantivyDocument;
 typedef struct SearchResult SearchResult;
-typedef struct Schema Schema;
 
 SchemaBuilder *schema_builder_new(char **error_buffer);
 

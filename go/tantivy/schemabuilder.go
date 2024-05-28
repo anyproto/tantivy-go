@@ -1,10 +1,6 @@
 package tantivy
 
-/*
-#cgo LDFLAGS:-L${SRCDIR}/../../target/debug -ltantivy_go -lm -pthread -ldl
-#include "bindings.h"
-#include <stdlib.h>
-*/
+//#include "bindings.h"
 import "C"
 import "errors"
 

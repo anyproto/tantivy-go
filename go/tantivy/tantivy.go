@@ -1,7 +1,7 @@
 package tantivy
 
 /*
-#cgo LDFLAGS:-L${SRCDIR}/../../target/debug -ltantivy_go -lm -pthread -ldl
+#cgo LDFLAGS:-L${SRCDIR}/../libs -ltantivy_go -lm -pthread -ldl
 #include "bindings.h"
 #include <stdlib.h>
 */
