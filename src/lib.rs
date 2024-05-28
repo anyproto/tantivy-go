@@ -375,7 +375,7 @@ pub extern "C" fn free_document(doc_ptr: *mut TantivyDocument) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn init() -> u8 {
+pub unsafe extern "C" fn init_lib() -> u8 {
     let mut log_level: &str = "info";
     let parse_val: String;
     if let Ok(existing_value) = std::env::var("ELV_RUST_LOG") {

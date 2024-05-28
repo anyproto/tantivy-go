@@ -22,10 +22,10 @@ func LibInit(directive ...string) {
 			initVal = directive[0]
 		}
 		os.Setenv("ELV_RUST_LOG", initVal)
-		C.init()
+		C.init_lib()
 	})
 }
 
 func Init() uint8 {
-	return uint8(C.init())
+	return uint8(C.init_lib())
 }

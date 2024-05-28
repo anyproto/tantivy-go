@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/anyproto/tantivy-go/tantivy"
+	"github.com/anyproto/tantivy-go/go/tantivy"
 )
 
 func main() {

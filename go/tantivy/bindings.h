@@ -45,4 +45,4 @@ void free_schema(Schema *schema_ptr);
 
 void free_document(TantivyDocument *doc_ptr);
 
-uint8_t init(void);
+uint8_t init_lib(void);

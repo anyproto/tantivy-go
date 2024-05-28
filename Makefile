@@ -8,7 +8,7 @@ lib:
 # 795     minos 11.0
 #  36     minos 12.0
 
-install:
+install: lib
 	@mkdir -p $(LIB_PATH)
 	@mkdir -p $(ANYTYPE_PATH)
 	@cp "target/debug/libtantivy_go.a" "$(LIB_PATH)/libtantivy_go.a"
