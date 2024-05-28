@@ -1,144 +1,99 @@
 package main
 
-/*
-#cgo LDFLAGS:-L${SRCDIR}/../target/debug -ltantivy_go -lm -pthread -ldl
-#include "bindings.h"
-#include <stdlib.h>
-*/
-import "C"
 import (
 	"fmt"
-	"os"
-	"sync"
-	"unsafe"
+
+	"github.com/anyproto/tantivy-go/tantivy"
 )
 
-var doOnce sync.Once
-
-func LibInit(directive ...string) {
-	var initVal string
-	doOnce.Do(func() {
-		if len(directive) == 0 {
-			initVal = "info"
-		} else {
-			initVal = directive[0]
-		}
-		os.Setenv("ELV_RUST_LOG", initVal)
-		C.init()
-	})
-}
-
-func getLastError(errorBuffer **C.char) string {
-	if *errorBuffer != nil {
-		errStr := C.GoString(*errorBuffer)
-		C.free_string(*errorBuffer)
-		*errorBuffer = nil
-		return errStr
-	}
-	return ""
-}
-
 func main() {
-	LibInit("debug")
-	var errorBuffer *C.char
-
-	path := C.CString("index_dir")
-	defer C.free(unsafe.Pointer(path))
-
-	title := C.CString("Example Title")
-	defer C.free(unsafe.Pointer(title))
-
-	body := C.CString("Example body content.")
-	defer C.free(unsafe.Pointer(body))
-
-	query := C.CString("body")
-	defer C.free(unsafe.Pointer(query))
-
+	// Initialize the library
+	tantivy.LibInit("debug")
 	// Create schema builder
-	builder := C.schema_builder_new(&errorBuffer)
-	if builder == nil {
-		fmt.Println("Failed to create schema builder:", getLastError(&errorBuffer))
+	builder, err := tantivy.NewSchemaBuilder()
+	if err != nil {
+		fmt.Println("Failed to create schema builder:", err)
 		return
 	}
 
 	// Add fields to schema
-	titleName := C.CString("title")
-	if C.schema_builder_add_text_field(builder, titleName, C._Bool(true), &errorBuffer) != 0 {
-		fmt.Println("Failed to add text field:", getLastError(&errorBuffer))
+	err = builder.AddTextField("title", true)
+	if err != nil {
+		fmt.Println("Failed to add text field:", err)
 		return
 	}
-	C.free(unsafe.Pointer(titleName))
 
-	bodyName := C.CString("body")
-	if C.schema_builder_add_text_field(builder, bodyName, C._Bool(true), &errorBuffer) != 0 {
-		fmt.Println("Failed to add text field:", getLastError(&errorBuffer))
+	err = builder.AddTextField("body", true)
+	if err != nil {
+		fmt.Println("Failed to add text field:", err)
 		return
 	}
-	C.free(unsafe.Pointer(bodyName))
 
 	// Build schema
-	schema := C.build_schema(builder, &errorBuffer)
-	if schema == nil {
-		fmt.Println("Failed to build schema:", getLastError(&errorBuffer))
+	schema, err := builder.BuildSchema()
+	if err != nil {
+		fmt.Println("Failed to build schema:", err)
 		return
 	}
-	defer C.free_schema(schema)
+	defer schema.Free()
 
 	// Create index with schema
-	index := C.create_index_with_schema(path, schema, &errorBuffer)
-	if index == nil {
-		fmt.Println("Failed to create index:", getLastError(&errorBuffer))
+	index, err := tantivy.NewIndexWithSchema("index_dir", schema)
+	if err != nil {
+		fmt.Println("Failed to create index:", err)
 		return
 	}
-	defer C.free_index(index)
+	defer index.Free()
 
 	// Create document
-	doc := C.create_document()
+	doc := tantivy.NewDocument()
 	if doc == nil {
 		fmt.Println("Failed to create document")
 		return
 	}
 
 	// Add fields to document
-	if C.add_field(doc, C.CString("title"), title, index, &errorBuffer) != 0 {
-		fmt.Println("Failed to add field to document:", getLastError(&errorBuffer))
+	err = doc.AddField("title", "Example Title", index)
+	if err != nil {
+		fmt.Println("Failed to add field to document:", err)
 		return
 	}
 
-	if C.add_field(doc, C.CString("body"), body, index, &errorBuffer) != 0 {
-		fmt.Println("Failed to add field to document:", getLastError(&errorBuffer))
+	err = doc.AddField("body", "Example body content.", index)
+	if err != nil {
+		fmt.Println("Failed to add field to document:", err)
 		return
 	}
 
 	// Add document to index
-	if C.add_document(index, doc, &errorBuffer) != 0 {
-		fmt.Println("Failed to add document:", getLastError(&errorBuffer))
+	err = index.AddAndConsumeDocument(doc)
+	if err != nil {
+		fmt.Println("Failed to add document:", err)
 		return
 	}
 
 	// Search index
-	result := C.search_index(index, query, &errorBuffer)
-	if result == nil {
-		fmt.Println("Failed to search index:", getLastError(&errorBuffer))
+	result, err := index.Search("body")
+	if err != nil {
+		fmt.Println("Failed to search index:", err)
 		return
 	}
-	defer C.free_search_result(result)
+	defer result.Free()
 
 	// Iterate through search results
 	for {
-		doc := C.get_next_result(result, &errorBuffer)
-		if doc == nil {
+		doc, err := result.GetNext()
+		if err != nil {
 			break
 		}
 		// Get JSON representation of the document
-		jsonStr := C.get_document_json(doc, schema, &errorBuffer)
-		if jsonStr != nil {
-			fmt.Println("Document JSON:")
-			fmt.Println(C.GoString(jsonStr))
-			C.free_string(jsonStr)
+		jsonStr, err := doc.ToJSON(schema)
+		if err != nil {
+			fmt.Println("Failed to get document JSON:", err)
 		} else {
-			fmt.Println("Failed to get document JSON:", getLastError(&errorBuffer))
+			fmt.Println("Document JSON:")
+			fmt.Println(jsonStr)
 		}
-		C.free_document(doc)
+		doc.Free()
 	}
 }
