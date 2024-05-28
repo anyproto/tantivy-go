@@ -122,7 +122,15 @@ func main() {
 		if doc == nil {
 			break
 		}
-		// Process the document here
-		fmt.Println("Document found")
+		// Get JSON representation of the document
+		jsonStr := C.get_document_json(doc, &errorBuffer)
+		if jsonStr != nil {
+			fmt.Println("Document JSON:")
+			fmt.Println(C.GoString(jsonStr))
+			C.free_string(jsonStr)
+		} else {
+			fmt.Println("Failed to get document JSON:", getLastError(&errorBuffer))
+		}
+		C.free_document(doc)
 	}
 }

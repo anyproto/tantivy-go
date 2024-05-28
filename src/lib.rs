@@ -184,7 +184,6 @@ pub extern "C" fn add_document(index_ptr: *mut Index, doc_ptr: *mut TantivyDocum
 }
 
 #[no_mangle]
-#[no_mangle]
 pub extern "C" fn search_index(index_ptr: *mut Index, query: *const c_char, error_buffer: *mut *mut c_char) -> *mut SearchResult {
     let index = unsafe {
         if index_ptr.is_null() {
@@ -282,6 +281,33 @@ pub extern "C" fn get_next_result(result_ptr: *mut SearchResult, error_buffer: *
 }
 
 #[no_mangle]
+pub extern "C" fn get_document_json(doc_ptr: *mut TantivyDocument, error_buffer: *mut *mut c_char) -> *mut c_char {
+    let doc = unsafe {
+        if doc_ptr.is_null() {
+            set_error("Document is null", error_buffer);
+            return ptr::null_mut();
+        }
+        &*doc_ptr
+    };
+
+    let json_doc = match serde_json::to_string(doc) {
+        Ok(json) => json,
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            return ptr::null_mut();
+        }
+    };
+
+    match CString::new(json_doc) {
+        Ok(cstr) => cstr.into_raw(),
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn free_search_result(result_ptr: *mut SearchResult) {
     if !result_ptr.is_null() {
         unsafe {
@@ -313,6 +339,15 @@ pub extern "C" fn free_schema_builder(builder_ptr: *mut SchemaBuilder) {
     if !builder_ptr.is_null() {
         unsafe {
             Box::from_raw(builder_ptr);
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn free_document(doc_ptr: *mut TantivyDocument) {
+    if !doc_ptr.is_null() {
+        unsafe {
+            Box::from_raw(doc_ptr);
         }
     }
 }

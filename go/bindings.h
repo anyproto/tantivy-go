@@ -29,9 +29,11 @@ int add_field(TantivyDocument *doc_ptr,
 
 int add_document(Index *index_ptr, TantivyDocument *doc_ptr, char **error_buffer);
 
-SearchResult *search_index(Index *index_ptr, const char *query, char **error_buffer);
+struct SearchResult *search_index(Index *index_ptr, const char *query, char **error_buffer);
 
 TantivyDocument *get_next_result(struct SearchResult *result_ptr, char **error_buffer);
+
+char *get_document_json(TantivyDocument *doc_ptr, char **error_buffer);
 
 void free_search_result(struct SearchResult *result_ptr);
 
@@ -40,5 +42,7 @@ void free_index(Index *index_ptr);
 void free_string(char *s);
 
 void free_schema_builder(SchemaBuilder *builder_ptr);
+
+void free_document(TantivyDocument *doc_ptr);
 
 uint8_t init(void);
