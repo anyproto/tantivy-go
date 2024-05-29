@@ -1,6 +1,4 @@
-export MACOSX_DEPLOYMENT_TARGET := 12
-MUSL_COMPILER_URL := https://pub-c60a000d68b544109df4fe5837762101.r2.dev/linux-compiler-musl-x86.zip
-MUSL_COMPILER_DIR := linux-compiler-musl-x86
+#export MACOSX_DEPLOYMENT_TARGET := 13
 LIB_PATH ?= go/libs
 ANYTYPE_PATH ?= ../anytype-heart/deps/libs
 
@@ -35,24 +33,27 @@ setup:
      done
 
 build-all:
-	@for target in $(TARGETS); do \
-    		echo "Сборка для таргета: $$target"; \
-    		if [ "$$target" = "x86_64-unknown-linux-musl" ]; then \
-    			env TARGET_CC=$(MUSL_COMPILER_DIR)/bin/x86_64-linux-musl-gcc  cargo build --release --target $$target; \
-    		else \
-    			cargo build --release --target $$target; \
-    		fi \
-    	done
-	@echo "Сборка завершена для всех таргетов."
+	env TARGET_CC=x86_64-linux-musl-gcc cargo build --release --target x86_64-unknown-linux-musl
+	env TARGET_CC=armv7a-linux-androideabi26-clang cargo build --release --target armv7-linux-androideabi
+	env TARGET_CC=i686-linux-android26-clang cargo build --release --target i686-linux-android
+	cargo build --release --target aarch64-linux-android
+	cargo build --release --target x86_64-linux-android
+	cargo build --release --target aarch64-apple-ios
+	cargo build --release --target x86_64-apple-ios
+	cargo build --release --target x86_64-apple-darwin
+	cargo build --release --target aarch64-apple-darwin
+	cargo build --release --target x86_64-pc-windows-gnu
+
 
 copy-all:
 	@for target in $(TARGETS); do \
 		mkdir -p go/libs/$$target; \
+		mkdir -p ../anytype-heart/deps/libs/$$target; \
 		cp target/$$target/release/libtantivy_go.a go/libs/$$target/; \
+		cp target/$$target/release/libtantivy_go.a ../anytype-heart/deps/libs/$$target/; \
 	done
 	@echo "Копирование завершено."
 
 install-musl:
-	curl -L $(MUSL_COMPILER_URL) -o /tmp/linux-compiler-musl-x86.zip
-	unzip /tmp/linux-compiler-musl-x86.zip -d .
+	brew tap messense/macos-cross-toolchains && brew install x86_64-unknown-linux-musl
 
