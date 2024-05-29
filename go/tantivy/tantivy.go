@@ -1,7 +1,16 @@
 package tantivy
 
 /*
-#cgo LDFLAGS:-L${SRCDIR}/../libs -ltantivy_go -lm -pthread -ldl
+#cgo windows,amd64 LDFLAGS:-L${SRCDIR}/../libs/x86_64-pc-windows-gnu -ltantivy_jpc -lm -pthread -lws2_32 -lbcrypt -lwsock32 -lntdll -luserenv -lsynchronization
+#cgo darwin,amd64 LDFLAGS:-L${SRCDIR}/../libs/x86_64-apple-darwin -ltantivy_jpc -lm -pthread -framework CoreFoundation -framework Security -ldl
+#cgo darwin,arm64 LDFLAGS:-L${SRCDIR}/../libs/aarch64-apple-darwin -ltantivy_jpc -lm -pthread -ldl
+#cgo ios,arm64 LDFLAGS:-L${SRCDIR}/../libs/aarch64-apple-ios -ltantivy_jpc -lm -pthread -ldl
+#cgo ios,amd64 LDFLAGS:-L${SRCDIR}/../libs/x86_64-apple-ios -ltantivy_jpc -lm -pthread -ldl
+#cgo android,arm LDFLAGS:-L${SRCDIR}/../libs/armv7-linux-androideabi -ltantivy_jpc -lm -pthread -ldl
+#cgo android,386 LDFLAGS:-L${SRCDIR}/../libs/i686-linux-android -ltantivy_jpc -lm -pthread -ldl
+#cgo android,amd64 LDFLAGS:-L${SRCDIR}/../libs/x86_64-linux-android -ltantivy_jpc -lm -pthread -ldl
+#cgo android,arm64 LDFLAGS:-L${SRCDIR}/../libs/aarch64-linux-android -ltantivy_jpc -lm -pthread -ldl
+#cgo linux,amd64 LDFLAGS:-L${SRCDIR}/../libs/i686-linux-android -Wl,--allow-multiple-definition -ltantivy_jpc -lm
 #include "bindings.h"
 #include <stdlib.h>
 */

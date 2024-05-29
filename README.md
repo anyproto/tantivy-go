@@ -3,3 +3,6 @@ Tantivy go bindings
 
 # To make library
 make lib
+
+# Versions
+rust 
