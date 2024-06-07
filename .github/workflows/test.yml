@@ -1,4 +1,10 @@
-on: [ pull_request, workflow_dispatch ]
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  pull_request:
+  workflow_dispatch:
+
 name: Test
 
 concurrency:
@@ -33,3 +39,18 @@ jobs:
           echo $(go env GOPATH)/bin >> $GITHUB_PATH
           cd go
           make test-full
+      - name: Create archives
+        run: |
+          mkdir -p .release
+          for dir in go/libs/*/ ; do
+            dir_name=$(basename "$dir")
+            tar -czf ".release/${dir_name}.tar.gz" -C "$dir" .
+          done
+        if: github.event_name == 'push'
+      - name: Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '.release/*'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
