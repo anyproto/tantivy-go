@@ -1,4 +1,4 @@
-on: [ pull_request, workflow_dispatch]
+on: [ pull_request, workflow_dispatch ]
 name: Test
 
 concurrency:
@@ -22,11 +22,14 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: build
+      - name: build rust
+        run: |
+          make build-all
+          make copy-all
+      - name: build go
         run: |
           echo GOPATH=$(go env GOPATH) >> $GITHUB_ENV
           echo GOBIN=$(go env GOPATH)/bin >> $GITHUB_ENV
           echo $(go env GOPATH)/bin >> $GITHUB_PATH
-          make build-all
           cd go
           make test-full
