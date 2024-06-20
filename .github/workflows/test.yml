@@ -1,0 +1,55 @@
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  pull_request:
+  workflow_dispatch:
+
+name: Test
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ${{ vars.RUNNER_TEST }}
+    env:
+      GOPRIVATE: github.com/anyproto
+    steps:
+      - name: git config
+        run: git config --global url.https://${{ secrets.ANYTYPE_PAT }}@github.com/.insteadOf https://github.com/
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: build rust
+        run: |
+          make install-all
+      - name: build go
+        run: |
+          echo GOPATH=$(go env GOPATH) >> $GITHUB_ENV
+          echo GOBIN=$(go env GOPATH)/bin >> $GITHUB_ENV
+          echo $(go env GOPATH)/bin >> $GITHUB_PATH
+          cd go
+          make build-verify
+      - name: Create archives
+        run: |
+          mkdir -p .release
+          for dir in go/libs/*/ ; do
+            dir_name=$(basename "$dir")
+            tar -czf ".release/${dir_name}.tar.gz" -C "$dir" .
+          done
+        if: github.event_name == 'push'
+      - name: Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '.release/*'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

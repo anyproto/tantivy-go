@@ -1,25 +1,39 @@
 package tantivy
 
-/*
-#cgo LDFLAGS:-L${SRCDIR}/../../target/debug -ltantivy_go -lm -pthread -ldl
-#include "bindings.h"
-#include <stdlib.h>
-*/
+//#include "bindings.h"
 import "C"
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 type SearchResult struct{ ptr *C.SearchResult }
 
-func (r *SearchResult) GetNext() (*TantivyDocument, error) {
+func (r *SearchResult) Get(index uint64) (*Document, error) {
 	var errBuffer *C.char
-	ptr := C.get_next_result(r.ptr, &errBuffer)
+	ptr := C.search_result_get_doc(r.ptr, C.uintptr_t(index), &errBuffer)
 	if ptr == nil {
-		defer C.free_string(errBuffer)
+		defer C.string_free(errBuffer)
 		return nil, errors.New(C.GoString(errBuffer))
 	}
-	return &TantivyDocument{ptr: ptr}, nil
+	return &Document{ptr: ptr}, nil
+}
+
+func (r *SearchResult) GetSize() (uint64, error) {
+	var errBuffer *C.char
+
+	size := C.search_result_get_size(r.ptr, &errBuffer)
+
+	errorMessage := C.GoString(errBuffer)
+	defer C.string_free(errBuffer) // Освобождение C строки после использования
+
+	if len(errorMessage) == 0 {
+		return uint64(size), nil
+	} else {
+		return uint64(0), fmt.Errorf(errorMessage)
+	}
 }
 
 func (r *SearchResult) Free() {
-	C.free_search_result(r.ptr)
+	C.search_result_free(r.ptr)
 }

@@ -1,45 +1,63 @@
 package tantivy
 
-/*
-#cgo LDFLAGS:-L${SRCDIR}/../../target/debug -ltantivy_go -lm -pthread -ldl
-#include "bindings.h"
-#include <stdlib.h>
-*/
+//#include "bindings.h"
 import "C"
-import "errors"
+import (
+	"errors"
+	"unsafe"
+)
 
-type TantivyDocument struct{ ptr *C.TantivyDocument }
+type Document struct{ ptr *C.Document }
 
-func NewDocument() *TantivyDocument {
-	ptr := C.create_document()
-	return &TantivyDocument{ptr: ptr}
+func NewDocument() *Document {
+	ptr := C.document_create()
+	return &Document{ptr: ptr}
 }
 
-func (d *TantivyDocument) AddField(fieldName, fieldValue string, index *Index) error {
+func (d *Document) AddField(fieldName, fieldValue string, index *Index) error {
 	cFieldName := C.CString(fieldName)
-	defer C.free_string(cFieldName)
+	defer C.string_free(cFieldName)
 	cFieldValue := C.CString(fieldValue)
-	defer C.free_string(cFieldValue)
+	defer C.string_free(cFieldValue)
 	var errBuffer *C.char
-	res := C.add_field(d.ptr, cFieldName, cFieldValue, index.ptr, &errBuffer)
+	res := C.document_add_field(d.ptr, cFieldName, cFieldValue, index.ptr, &errBuffer)
 	if res != 0 {
-		defer C.free_string(errBuffer)
+		defer C.string_free(errBuffer)
 		return errors.New(C.GoString(errBuffer))
 	}
 	return nil
 }
 
-func (d *TantivyDocument) ToJSON(schema *Schema) (string, error) {
+func (d *Document) ToJson(schema *Schema, includeFields ...string) (string, error) {
 	var errBuffer *C.char
-	cStr := C.get_document_json(d.ptr, schema.ptr, &errBuffer)
-	if cStr == nil {
-		defer C.free_string(errBuffer)
-		return "", errors.New(C.GoString(errBuffer))
+
+	includeFieldsPtr := make([]*C.char, len(includeFields))
+	for i, field := range includeFields {
+		includedField := C.CString(field)
+		defer C.free(unsafe.Pointer(includedField))
+		includeFieldsPtr[i] = includedField
 	}
-	defer C.free_string(cStr)
+
+	cStr := C.document_as_json(d.ptr, (**C.char)(unsafe.Pointer(&includeFieldsPtr[0])), C.uintptr_t(len(includeFields)), schema.ptr, &errBuffer)
+	if cStr == nil {
+		errorMessage := C.GoString(errBuffer)
+		defer C.string_free(errBuffer)
+		return "", errors.New(errorMessage)
+	}
+	defer C.string_free(cStr)
+
 	return C.GoString(cStr), nil
 }
 
-func (d *TantivyDocument) Free() {
-	C.free_document(d.ptr)
+func ToModel[T any](doc *Document, schema *Schema, includeFields []string, f func(json string) (T, error)) (T, error) {
+	json, err := doc.ToJson(schema, includeFields...)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	return f(json)
+}
+
+func (d *Document) Free() {
+	C.document_free(d.ptr)
 }

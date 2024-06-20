@@ -1,10 +1,6 @@
 package tantivy
 
-/*
-#cgo LDFLAGS:-L${SRCDIR}/../../target/debug -ltantivy_go -lm -pthread -ldl
-#include "bindings.h"
-#include <stdlib.h>
-*/
+//#include "bindings.h"
 import "C"
 import "errors"
 
@@ -13,23 +9,66 @@ type (
 	Schema        struct{ ptr *C.Schema }
 )
 
+const (
+	IndexRecordOptionBasic = iota
+	IndexRecordOptionWithFreqs
+	IndexRecordOptionWithFreqsAndPositions
+)
+
+const DefaultTokenizer = "default"
+
+const (
+	Arabic     = "ar"
+	Danish     = "da"
+	Dutch      = "nl"
+	English    = "en"
+	Finnish    = "fi"
+	French     = "fr"
+	German     = "de"
+	Greek      = "el"
+	Hungarian  = "hu"
+	Italian    = "it"
+	Norwegian  = "no"
+	Portuguese = "pt"
+	Romanian   = "ro"
+	Russian    = "ru"
+	Spanish    = "es"
+	Swedish    = "sv"
+	Tamil      = "ta"
+	Turkish    = "tr"
+)
+
 func NewSchemaBuilder() (*SchemaBuilder, error) {
-	var errBuffer *C.char
-	ptr := C.schema_builder_new(&errBuffer)
+	ptr := C.schema_builder_new()
 	if ptr == nil {
-		defer C.free_string(errBuffer)
-		return nil, errors.New(C.GoString(errBuffer))
+		return nil, errors.New("failed to create schema builder")
 	}
 	return &SchemaBuilder{ptr: ptr}, nil
 }
 
-func (b *SchemaBuilder) AddTextField(name string, stored bool) error {
+func (b *SchemaBuilder) AddTextField(
+	name string,
+	stored bool,
+	isText bool,
+	indexRecordOption int,
+	tokenizer string,
+) error {
 	cName := C.CString(name)
-	defer C.free_string(cName)
+	cTokenizer := C.CString(tokenizer)
+	defer C.string_free(cName)
+	defer C.string_free(cTokenizer)
 	var errBuffer *C.char
-	res := C.schema_builder_add_text_field(b.ptr, cName, C._Bool(stored), &errBuffer)
+	res := C.schema_builder_add_text_field(
+		b.ptr,
+		cName,
+		C._Bool(stored),
+		C._Bool(isText),
+		C.int(indexRecordOption),
+		cTokenizer,
+		&errBuffer,
+	)
 	if res != 0 {
-		defer C.free_string(errBuffer)
+		defer C.string_free(errBuffer)
 		return errors.New(C.GoString(errBuffer))
 	}
 	return nil
@@ -37,14 +76,10 @@ func (b *SchemaBuilder) AddTextField(name string, stored bool) error {
 
 func (b *SchemaBuilder) BuildSchema() (*Schema, error) {
 	var errBuffer *C.char
-	ptr := C.build_schema(b.ptr, &errBuffer)
+	ptr := C.schema_builder_build(b.ptr, &errBuffer)
 	if ptr == nil {
-		defer C.free_string(errBuffer)
+		defer C.string_free(errBuffer)
 		return nil, errors.New(C.GoString(errBuffer))
 	}
 	return &Schema{ptr: ptr}, nil
-}
-
-func (s *Schema) Free() {
-	C.free_schema(s.ptr)
 }

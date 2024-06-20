@@ -1,106 +1,103 @@
-use std::ffi::{CStr, CString};
+mod tantivy_go;
+mod clayer;
+
+use std::ffi::{CString};
 use std::os::raw::{c_char, c_int};
-use std::ptr;
+use std::path::Path;
+use std::{fs, ptr, slice};
+use std::collections::HashMap;
+use std::ptr::null_mut;
 use log::debug;
-use tantivy::{Index, schema::*};
+use serde_json::json;
+use tantivy::{Index, IndexWriter, schema::*};
 use tantivy::directory::MmapDirectory;
-use tantivy::doc as TantivyDocument;
-
-pub struct SearchResult {
-    documents: Vec<TantivyDocument>,
-    index: usize,
-}
-
-fn set_error(err: &str, error_buffer: *mut *mut c_char) -> c_int {
-    let err_str = match CString::new(err) {
-        Ok(s) => s,
-        Err(_) => return -1,
-    };
-    unsafe {
-        if !error_buffer.is_null() {
-            let c_str = err_str.into_raw();
-            *error_buffer = c_str;
-        }
-    }
-    -1
-}
-
-fn set_error_owned(err: String, error_buffer: *mut *mut c_char) -> c_int {
-    let err_str = match CString::new(err) {
-        Ok(s) => s,
-        Err(_) => return -1,
-    };
-    unsafe {
-        if !error_buffer.is_null() {
-            let c_str = err_str.into_raw();
-            *error_buffer = c_str;
-        }
-    }
-    -1
-}
+use tantivy::query::{QueryParser};
+use crate::clayer::{assert_pointer, assert_string, set_error};
+use crate::tantivy_go::{Document, SearchResult, extract_text_from_owned_value, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_simple_tokenizer, register_raw_tokenizer, add_text_field, register_ngram_tokenizer};
 
 #[no_mangle]
-pub extern "C" fn schema_builder_new(error_buffer: *mut *mut c_char) -> *mut SchemaBuilder {
+pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
     Box::into_raw(Box::new(Schema::builder()))
 }
 
 #[no_mangle]
-pub extern "C" fn schema_builder_add_text_field(builder: *mut SchemaBuilder, name: *const c_char, stored: bool, error_buffer: *mut *mut c_char) -> c_int {
-    let builder = unsafe {
-        if builder.is_null() {
-            return set_error("SchemaBuilder is null", error_buffer);
-        }
-        &mut *builder
+pub extern "C" fn schema_builder_add_text_field(
+    builder_ptr: *mut SchemaBuilder,
+    field_name_ptr: *const c_char,
+    stored: bool,
+    is_text: bool,
+    index_record_option_const: c_int,
+    tokenizer_name_ptr: *const c_char,
+    error_buffer: *mut *mut c_char,
+) -> c_int {
+    let builder = match assert_pointer(builder_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
     };
 
-    let name_str = unsafe { CStr::from_ptr(name) }.to_str();
-    match name_str {
-        Ok(name) => {
-            if stored {
-                builder.add_text_field(name, TEXT | STORED);
-            } else {
-                builder.add_text_field(name, TEXT);
-            }
-            0
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    let field_name = match assert_string(field_name_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    let index_record_option = match index_record_option_const {
+        0 => IndexRecordOption::Basic,
+        1 => IndexRecordOption::WithFreqs,
+        2 => IndexRecordOption::WithFreqsAndPositions,
+        _ => {
+            set_error("index_record_option_const is wrong", error_buffer);
+            return -1;
         }
-        Err(err) => set_error(&err.to_string(), error_buffer)
+    };
+
+    add_text_field(stored, is_text, builder, tokenizer_name, field_name, index_record_option);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn schema_builder_build(
+    builder_ptr: *mut SchemaBuilder,
+    error_buffer: *mut *mut c_char,
+) -> *mut Schema {
+    let builder = match assert_pointer(builder_ptr, error_buffer) {
+        Ok(value) => unsafe { Box::from_raw(value) },
+        Err(_) => return ptr::null_mut(),
+    };
+
+    Box::into_raw(Box::new(builder.build()))
+}
+
+#[no_mangle]
+pub extern "C" fn index_create_with_schema(
+    path_ptr: *const c_char,
+    schema_ptr: *mut Schema,
+    error_buffer: *mut *mut c_char,
+) -> *mut Index {
+    let schema = match assert_pointer(schema_ptr, error_buffer) {
+        Ok(value) => value.clone(),
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let path = match assert_string(path_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match fs::create_dir_all(Path::new(path)) {
+        Err(e) => {
+            debug!("Failed to create directories: {}", e);
+            set_error(&e.to_string(), error_buffer);
+            return ptr::null_mut();
+        }
+        _ => {}
     }
-}
 
-#[no_mangle]
-pub extern "C" fn build_schema(builder: *mut SchemaBuilder, error_buffer: *mut *mut c_char) -> *mut Schema {
-    let builder = unsafe {
-        if builder.is_null() {
-            set_error("SchemaBuilder is null", error_buffer);
-            return ptr::null_mut();
-        }
-        Box::from_raw(builder)
-    };
-
-    let schema = builder.build();
-    Box::into_raw(Box::new(schema))
-}
-
-#[no_mangle]
-pub extern "C" fn create_index_with_schema(path: *const c_char, schema: *mut Schema, error_buffer: *mut *mut c_char) -> *mut Index {
-    let c_str = unsafe { CStr::from_ptr(path) };
-    let path_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return ptr::null_mut();
-        }
-    };
-
-    let schema = unsafe {
-        if schema.is_null() {
-            set_error("Schema is null", error_buffer);
-            return ptr::null_mut();
-        }
-        &*schema
-    };
-
-    let dir = match MmapDirectory::open(path_str) {
+    let dir = match MmapDirectory::open(path) {
         Ok(dir) => dir,
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
@@ -108,7 +105,7 @@ pub extern "C" fn create_index_with_schema(path: *const c_char, schema: *mut Sch
         }
     };
 
-    match Index::open_or_create(dir, schema.clone()) {
+    match Index::open_or_create(dir, schema) {
         Ok(index) => Box::into_raw(Box::new(index)),
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
@@ -118,77 +115,133 @@ pub extern "C" fn create_index_with_schema(path: *const c_char, schema: *mut Sch
 }
 
 #[no_mangle]
-pub extern "C" fn create_document() -> *mut TantivyDocument {
-    Box::into_raw(Box::new(TantivyDocument::new()))
-}
-
-#[no_mangle]
-pub extern "C" fn add_field(doc_ptr: *mut TantivyDocument, field_name: *const c_char, field_value: *const c_char, index_ptr: *mut Index, error_buffer: *mut *mut c_char) -> c_int {
-    let doc = unsafe {
-        if doc_ptr.is_null() {
-            return set_error("Document is null", error_buffer);
-        }
-        &mut *doc_ptr
+pub extern "C" fn index_register_text_analyzer_ngram(
+    index_ptr: *mut Index,
+    tokenizer_name_ptr: *const c_char,
+    min_gram: usize,
+    max_gram: usize,
+    prefix_only: bool,
+    error_buffer: *mut *mut c_char,
+) -> c_int {
+    let index = match assert_pointer(index_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
     };
 
-    let index = unsafe {
-        if index_ptr.is_null() {
-            return set_error("Index is null", error_buffer);
-        }
-        &mut *index_ptr
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
     };
 
-    let field_name_str = unsafe { CStr::from_ptr(field_name) }.to_str();
-    let field_value_str = unsafe { CStr::from_ptr(field_value) }.to_str();
-    debug!("field_name_str: {:?}, value {:?}", field_name_str, field_value_str);
-    let field_name = match field_name_str {
-        Ok(s) => s,
-        Err(err) => {
-            return set_error(&err.to_string(), error_buffer);
-        }
-    };
-
-    let field_value = match field_value_str {
-        Ok(s) => s,
-        Err(err) => {
-            return set_error(&err.to_string(), error_buffer);
-        }
-    };
-
-    let schema = index.schema();
-    let field = match schema.get_field(field_name) {
-        Ok(field) => field,
-        Err(err) => return set_error(&err.to_string(), error_buffer),
-    };
-
-    doc.add_text(field, field_value);
+    register_ngram_tokenizer(min_gram, max_gram, prefix_only, index, tokenizer_name);
     0
 }
 
 #[no_mangle]
-pub extern "C" fn add_document(index_ptr: *mut Index, doc_ptr: *mut TantivyDocument, error_buffer: *mut *mut c_char) -> c_int {
-    let index = unsafe {
-        if index_ptr.is_null() {
-            return set_error("Index is null", error_buffer);
-        }
-        &mut *index_ptr
+pub extern "C" fn index_register_text_analyzer_edge_ngram(
+    index_ptr: *mut Index,
+    tokenizer_name_ptr: *const c_char,
+    min_gram: usize,
+    max_gram: usize,
+    limit: usize,
+    error_buffer: *mut *mut c_char,
+) -> c_int {
+    let index = match assert_pointer(index_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
     };
 
-    let doc = unsafe {
-        if doc_ptr.is_null() {
-            return set_error("Document is null", error_buffer);
-        }
-        Box::from_raw(doc_ptr)
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
     };
 
-    let mut index_writer = match index.writer(50_000_000) {
+    register_edge_ngram_tokenizer(min_gram, max_gram, limit, index, tokenizer_name);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn index_register_text_analyzer_simple(
+    index_ptr: *mut Index,
+    tokenizer_name_ptr: *const c_char,
+    text_limit: usize,
+    lang_str_ptr: *const c_char,
+    error_buffer: *mut *mut c_char,
+) -> c_int {
+    let index = match assert_pointer(index_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    let lang = match assert_string(lang_str_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    register_simple_tokenizer(text_limit, index, tokenizer_name, lang);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn index_register_text_analyzer_raw(
+    index_ptr: *mut Index,
+    tokenizer_name_ptr: *const c_char,
+    error_buffer: *mut *mut c_char,
+) -> c_int {
+    let index = match assert_pointer(index_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    register_raw_tokenizer(index, tokenizer_name);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn index_add_and_consume_documents(
+    index_ptr: *mut Index,
+    docs_ptr: *mut *mut Document,
+    docs_len: usize,
+    error_buffer: *mut *mut c_char,
+) -> c_int {
+    let index = match assert_pointer(index_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    let mut index_writer = match index.writer(DOCUMENT_BUDGET_BYTES) {
         Ok(writer) => writer,
+        Err(err) => return set_error(&err.to_string(), error_buffer)
+    };
+
+    let docs_slice = match assert_pointer(docs_ptr, error_buffer) {
+        Ok(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, docs_len) },
         Err(err) => {
-            return set_error(&err.to_string(), error_buffer);
+            set_error(&err.to_string(), error_buffer);
+            return err;
         }
     };
 
-    index_writer.add_document(*doc);
+    for doc in docs_slice {
+        match assert_pointer(*doc, error_buffer) {
+            Ok(doc) => {
+                let doc = *unsafe { Box::from_raw(doc) };
+                let _ = index_writer.add_document(doc.tantivy_doc);
+            }
+            Err(value) => { return value; }
+        }
+    }
+
     if index_writer.commit().is_ok() {
         0
     } else {
@@ -196,23 +249,100 @@ pub extern "C" fn add_document(index_ptr: *mut Index, doc_ptr: *mut TantivyDocum
     }
 }
 
+
 #[no_mangle]
-pub extern "C" fn search_index(index_ptr: *mut Index, query: *const c_char, error_buffer: *mut *mut c_char) -> *mut SearchResult {
-    let index = unsafe {
-        if index_ptr.is_null() {
-            set_error("Index is null", error_buffer);
-            return ptr::null_mut();
-        }
-        &mut *index_ptr
+pub extern "C" fn index_delete_documents(
+    index_ptr: *mut Index,
+    field_name_ptr: *const c_char,
+    delete_ids_ptr: *mut *const c_char,
+    delete_ids_len: usize,
+    error_buffer: *mut *mut c_char,
+) -> c_int {
+    let index = match assert_pointer(index_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
     };
 
-    let query_str = unsafe { CStr::from_ptr(query) }.to_str();
-    let query = match query_str {
-        Ok(s) => s,
+    let field_name = match assert_string(field_name_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    let mut index_writer: IndexWriter<TantivyDocument> = match index.writer(DOCUMENT_BUDGET_BYTES) {
+        Ok(writer) => writer,
+        Err(err) => return set_error(&err.to_string(), error_buffer)
+    };
+
+    let schema = index.schema();
+    let field = match schema.get_field(field_name) {
+        Ok(field) => {
+            match { schema.get_field_entry(field).field_type() } {
+                FieldType::Str(_) => {
+                    field
+                }
+                &_ => {
+                    set_error("wrong field type", error_buffer);
+                    return -1;
+                }
+            }
+        }
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
-            return ptr::null_mut();
+            return -1;
         }
+    };
+
+    let delete_ids_slice = match assert_pointer(delete_ids_ptr, error_buffer) {
+        Ok(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, delete_ids_len) },
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            return err;
+        }
+    };
+
+    for id in delete_ids_slice {
+        match assert_string(*id, error_buffer) {
+            Ok(id_value) => {
+                let _ = index_writer.delete_term(Term::from_field_text(field, id_value));
+            }
+            Err(value) => {
+                return value;
+            }
+        }
+    };
+
+    if index_writer.commit().is_ok() {
+        0
+    } else {
+        set_error("Failed to commit removing", error_buffer)
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn index_num_docs(
+    index_ptr: *mut Index,
+    error_buffer: *mut *mut c_char,
+) -> u64 {
+    let index = match assert_pointer(index_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(_) => return 0,
+    };
+
+    return index.reader().unwrap().searcher().num_docs();
+}
+
+#[no_mangle]
+pub extern "C" fn index_search(
+    index_ptr: *mut Index,
+    field_names_ptr: *mut *const c_char,
+    field_names_len: usize,
+    query_ptr: *const c_char,
+    error_buffer: *mut *mut c_char,
+    docs_limit: usize,
+) -> *mut SearchResult {
+    let index = match assert_pointer(index_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(_) => return ptr::null_mut(),
     };
 
     let reader = match index.reader() {
@@ -225,22 +355,43 @@ pub extern "C" fn search_index(index_ptr: *mut Index, query: *const c_char, erro
 
     let searcher = reader.searcher();
     let schema = index.schema();
-    let title_field = match schema.get_field("title") {
-        Ok(field) => field,
+
+    let mut fields = Vec::with_capacity(field_names_len);
+
+    let field_names_slice = match assert_pointer(field_names_ptr, error_buffer) {
+        Ok(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, field_names_len) },
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
             return ptr::null_mut();
         }
     };
-    let body_field = match schema.get_field("body") {
-        Ok(field) => field,
-        Err(err) => return {
-            set_error(&err.to_string(), error_buffer);
-            return ptr::null_mut();
-        },
+
+    for field_name in field_names_slice {
+        match assert_string(*field_name, error_buffer) {
+            Ok(field_name) => {
+                match schema.get_field(field_name) {
+                    Ok(field) => {
+                        fields.push(field);
+                    }
+                    Err(err) => {
+                        set_error(&err.to_string(), error_buffer);
+                        return null_mut();
+                    }
+                };
+            }
+            Err(_) => {
+                return null_mut();
+            }
+        }
     };
 
-    let query_parser = tantivy::query::QueryParser::for_index(index, vec![title_field, body_field]);
+    let query = match assert_string(query_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let query_parser = QueryParser::for_index(index, fields);
+
     let query = match query_parser.parse_query(query) {
         Ok(query) => query,
         Err(err) => {
@@ -249,7 +400,10 @@ pub extern "C" fn search_index(index_ptr: *mut Index, query: *const c_char, erro
         }
     };
 
-    let top_docs = match searcher.search(&query, &tantivy::collector::TopDocs::with_limit(10)) {
+    let top_docs = match searcher.search(
+        &query,
+        &tantivy::collector::TopDocs::with_limit(docs_limit),
+    ) {
         Ok(top_docs) => top_docs,
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
@@ -258,124 +412,210 @@ pub extern "C" fn search_index(index_ptr: *mut Index, query: *const c_char, erro
     };
 
     let mut documents = Vec::new();
-    for (_score, doc_address) in top_docs {
+    for (score, doc_address) in top_docs {
         match searcher.doc(doc_address) {
-            Ok(doc) => documents.push(doc),
+            Ok(doc) => {
+                documents.push(Document {
+                    tantivy_doc: doc,
+                    score: score as usize,
+                });
+            }
             Err(err) => {
                 set_error(&err.to_string(), error_buffer);
                 return ptr::null_mut();
             }
         };
     }
-
+    let len = documents.len();
     Box::into_raw(Box::new(SearchResult {
-        documents,
-        index: 0,
+        documents: documents,
+        size: len,
     }))
 }
 
 #[no_mangle]
-pub extern "C" fn get_next_result(result_ptr: *mut SearchResult, error_buffer: *mut *mut c_char) -> *mut TantivyDocument {
-    let result = unsafe {
-        if result_ptr.is_null() {
-            set_error("SearchResult is null", error_buffer);
-            return ptr::null_mut();
-        }
-        &mut *result_ptr
+pub extern "C" fn index_free(index_ptr: *mut Index) {
+    if !index_ptr.is_null() {
+        unsafe { drop(Box::from_raw(index_ptr)); }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn search_result_get_size(
+    result_ptr: *mut SearchResult,
+    error_buffer: *mut *mut c_char,
+) -> usize {
+    match assert_pointer(result_ptr, error_buffer) {
+        Ok(value) => value.size,
+        Err(_) => 0,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn search_result_get_doc(
+    result_ptr: *mut SearchResult,
+    index: usize,
+    error_buffer: *mut *mut c_char,
+) -> *mut Document {
+    let result = match assert_pointer(result_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(_) => return ptr::null_mut(),
     };
 
-    if result.index >= result.documents.len() {
+    if index > result.documents.len() - 1 {
+        set_error("wrong index", error_buffer);
         return ptr::null_mut();
     }
 
-    let doc = &result.documents[result.index];
-    result.index += 1;
-    Box::into_raw(Box::new(doc.clone()))
+    let doc = result.documents[index].clone();
+    Box::into_raw(Box::new(doc))
 }
 
 #[no_mangle]
-pub extern "C" fn get_document_json(doc_ptr: *mut TantivyDocument, schema: *mut Schema, error_buffer: *mut *mut c_char) -> *mut c_char {
-    let doc = unsafe {
-        if doc_ptr.is_null() {
-            set_error("Document is null", error_buffer);
-            return ptr::null_mut();
-        }
-        &*doc_ptr
+pub extern "C" fn search_result_free(result_ptr: *mut SearchResult) {
+    if !result_ptr.is_null() {
+        unsafe { drop(Box::from_raw(result_ptr)); }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn document_create() -> *mut Document {
+    Box::into_raw(Box::new(Document {
+        tantivy_doc: TantivyDocument::new(),
+        score: 0,
+    }))
+}
+
+#[no_mangle]
+pub extern "C" fn document_add_field(
+    doc_ptr: *mut Document,
+    field_name_ptr: *const c_char,
+    field_value_ptr: *const c_char,
+    index_ptr: *mut Index,
+    error_buffer: *mut *mut c_char,
+) -> c_int {
+    let doc = match assert_pointer(doc_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
     };
 
-    let schema = unsafe {
-        if schema.is_null() {
-            set_error("Schema is null", error_buffer);
-            return ptr::null_mut();
-        }
-        &*schema
+    let index = match assert_pointer(index_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
     };
 
-    match CString::new(doc.to_json(schema)) {
-        Ok(cstr) => cstr.into_raw(),
+    let field_name = match assert_string(field_name_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    let field_value = match assert_string(field_value_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
+
+    debug!("field_name_str: {:?}, value {:?}", field_name, field_value);
+
+    let schema = index.schema();
+    let field = match schema.get_field(field_name) {
+        Ok(field) => field,
+        Err(err) => return set_error(&err.to_string(), error_buffer),
+    };
+
+    doc.tantivy_doc.add_text(field, field_value);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn document_as_json(
+    doc_ptr: *mut Document,
+    include_fields_ptr: *mut *const c_char,
+    include_fields_len: usize,
+    schema_ptr: *mut Schema,
+    error_buffer: *mut *mut c_char,
+) -> *mut c_char {
+    let doc = match assert_pointer(doc_ptr, error_buffer) {
+        Ok(value) => value,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let schema = match assert_pointer(schema_ptr, error_buffer) {
+        Ok(value) => value.clone(),
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let include_fields_slice = match assert_pointer(include_fields_ptr, error_buffer) {
+        Ok(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, include_fields_len) },
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
-            ptr::null_mut()
+            return ptr::null_mut();
+        }
+    };
+
+    let mut field_to_name = HashMap::new();
+
+    for field_name in include_fields_slice {
+        match assert_string(*field_name, error_buffer) {
+            Ok(field_name) => {
+                match schema.get_field(field_name) {
+                    Ok(field) => {
+                        field_to_name.insert(field, field_name)
+                    }
+                    Err(err) => {
+                        set_error(&err.to_string(), error_buffer);
+                        return null_mut();
+                    }
+                };
+            }
+            Err(_) => {
+                return null_mut();
+            }
+        }
+    };
+
+    let mut result_json: HashMap<&str, serde_json::Value> = HashMap::new();
+    result_json.insert("score", serde_json::to_value(doc.score).unwrap());
+    let doc = &doc.tantivy_doc;
+    for field_value in doc.field_values() {
+        match field_to_name.get(&field_value.field) {
+            Some(key) => {
+                result_json.insert(key, serde_json::to_value(
+                    extract_text_from_owned_value(
+                        &field_value.value).unwrap()
+                ).unwrap(), );
+            }
+            None => {}
+        }
+    }
+
+    match CString::new(json!(result_json).to_string()) {
+        Ok(cstr) => {
+            let x = cstr.into_raw();
+            x
+        }
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            return ptr::null_mut();
         }
     }
 }
 
 #[no_mangle]
-pub extern "C" fn free_search_result(result_ptr: *mut SearchResult) {
-    if !result_ptr.is_null() {
-        unsafe {
-            Box::from_raw(result_ptr);
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn free_index(index_ptr: *mut Index) {
-    if !index_ptr.is_null() {
-        unsafe {
-            Box::from_raw(index_ptr);
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn free_string(s: *mut c_char) {
-    if !s.is_null() {
-        unsafe {
-            CString::from_raw(s);
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn free_schema_builder(builder_ptr: *mut SchemaBuilder) {
-    if !builder_ptr.is_null() {
-        unsafe {
-            Box::from_raw(builder_ptr);
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn free_schema(schema_ptr: *mut Schema) {
-    if !schema_ptr.is_null() {
-        unsafe {
-            Box::from_raw(schema_ptr);
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn free_document(doc_ptr: *mut TantivyDocument) {
+pub extern "C" fn document_free(doc_ptr: *mut Document) {
     if !doc_ptr.is_null() {
-        unsafe {
-            Box::from_raw(doc_ptr);
-        }
+        unsafe { drop(Box::from_raw(doc_ptr)); }
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn init() -> u8 {
+pub extern "C" fn string_free(s: *mut c_char) {
+    if !s.is_null() {
+        unsafe { drop(CString::from_raw(s)); }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn init_lib() -> u8 {
     let mut log_level: &str = "info";
     let parse_val: String;
     if let Ok(existing_value) = std::env::var("ELV_RUST_LOG") {

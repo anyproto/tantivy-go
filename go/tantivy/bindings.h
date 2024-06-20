@@ -1,51 +1,99 @@
+#include <binding_typedefs.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef struct Index Index;
-typedef struct SchemaBuilder SchemaBuilder;
-typedef struct TantivyDocument TantivyDocument;
+#define DOCUMENT_BUDGET_BYTES 50000000
+
+typedef struct Document Document;
+
 typedef struct SearchResult SearchResult;
-typedef struct Schema Schema;
 
-SchemaBuilder *schema_builder_new(char **error_buffer);
+SchemaBuilder *schema_builder_new(void);
 
-int schema_builder_add_text_field(SchemaBuilder *builder,
-                                  const char *name,
+int schema_builder_add_text_field(SchemaBuilder *builder_ptr,
+                                  const char *field_name_ptr,
                                   bool stored,
+                                  bool is_text,
+                                  int index_record_option_const,
+                                  const char *tokenizer_name_ptr,
                                   char **error_buffer);
 
-Schema *build_schema(SchemaBuilder *builder, char **error_buffer);
+Schema *schema_builder_build(SchemaBuilder *builder_ptr, char **error_buffer);
 
-Index *create_index_with_schema(const char *path, Schema *schema, char **error_buffer);
+Index *index_create_with_schema(const char *path_ptr, Schema *schema_ptr, char **error_buffer);
 
-TantivyDocument *create_document(void);
+int index_register_text_analyzer_ngram(Index *index_ptr,
+                                       const char *tokenizer_name_ptr,
+                                       uintptr_t min_gram,
+                                       uintptr_t max_gram,
+                                       bool prefix_only,
+                                       char **error_buffer);
 
-int add_field(TantivyDocument *doc_ptr,
-              const char *field_name,
-              const char *field_value,
-              Index *index_ptr,
-              char **error_buffer);
+int index_register_text_analyzer_edge_ngram(Index *index_ptr,
+                                            const char *tokenizer_name_ptr,
+                                            uintptr_t min_gram,
+                                            uintptr_t max_gram,
+                                            uintptr_t limit,
+                                            char **error_buffer);
 
-int add_document(Index *index_ptr, TantivyDocument *doc_ptr, char **error_buffer);
+int index_register_text_analyzer_simple(Index *index_ptr,
+                                        const char *tokenizer_name_ptr,
+                                        uintptr_t text_limit,
+                                        const char *lang_str_ptr,
+                                        char **error_buffer);
 
-struct SearchResult *search_index(Index *index_ptr, const char *query, char **error_buffer);
+int index_register_text_analyzer_raw(Index *index_ptr,
+                                     const char *tokenizer_name_ptr,
+                                     char **error_buffer);
 
-TantivyDocument *get_next_result(struct SearchResult *result_ptr, char **error_buffer);
+int index_add_and_consume_documents(Index *index_ptr,
+                                    struct Document **docs_ptr,
+                                    uintptr_t docs_len,
+                                    char **error_buffer);
 
-char *get_document_json(TantivyDocument *doc_ptr, Schema *schema, char **error_buffer);
+int index_delete_documents(Index *index_ptr,
+                           const char *field_name_ptr,
+                           const char **delete_ids_ptr,
+                           uintptr_t delete_ids_len,
+                           char **error_buffer);
 
-void free_search_result(struct SearchResult *result_ptr);
+uint64_t index_num_docs(Index *index_ptr, char **error_buffer);
 
-void free_index(Index *index_ptr);
+struct SearchResult *index_search(Index *index_ptr,
+                                  const char **field_names_ptr,
+                                  uintptr_t field_names_len,
+                                  const char *query_ptr,
+                                  char **error_buffer,
+                                  uintptr_t docs_limit);
 
-void free_string(char *s);
+void index_free(Index *index_ptr);
 
-void free_schema_builder(SchemaBuilder *builder_ptr);
+uintptr_t search_result_get_size(struct SearchResult *result_ptr, char **error_buffer);
 
-void free_schema(Schema *schema_ptr);
+struct Document *search_result_get_doc(struct SearchResult *result_ptr,
+                                       uintptr_t index,
+                                       char **error_buffer);
 
-void free_document(TantivyDocument *doc_ptr);
+void search_result_free(struct SearchResult *result_ptr);
 
-uint8_t init(void);
+struct Document *document_create(void);
+
+int document_add_field(struct Document *doc_ptr,
+                       const char *field_name_ptr,
+                       const char *field_value_ptr,
+                       Index *index_ptr,
+                       char **error_buffer);
+
+char *document_as_json(struct Document *doc_ptr,
+                       const char **include_fields_ptr,
+                       uintptr_t include_fields_len,
+                       Schema *schema_ptr,
+                       char **error_buffer);
+
+void document_free(struct Document *doc_ptr);
+
+void string_free(char *s);
+
+uint8_t init_lib(void);
