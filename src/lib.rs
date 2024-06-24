@@ -13,7 +13,7 @@ use tantivy::{Index, IndexWriter, schema::*};
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{QueryParser};
 use crate::c_util::{assert_pointer, assert_string, set_error};
-use crate::tantivy_util::{Document, SearchResult, extract_text_from_owned_value, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_simple_tokenizer, register_raw_tokenizer, add_text_field, register_ngram_tokenizer};
+use crate::tantivy_util::{Document, SearchResult, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_simple_tokenizer, register_raw_tokenizer, add_text_field, register_ngram_tokenizer, get_string_field_entry, document_to_json};
 
 #[no_mangle]
 pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
@@ -263,9 +263,9 @@ pub extern "C" fn index_delete_documents(
     let schema = index.schema();
     let field = match schema.get_field(field_name) {
         Ok(field) => {
-            match { schema.get_field_entry(field).field_type() } {
-                FieldType::Str(_) => field,
-                &_ => return set_error("wrong field type", error_buffer)
+            match get_string_field_entry(schema, field) {
+                Ok(value) => value,
+                Err(err) => return set_error(err, error_buffer)
             }
         }
         Err(err) => return set_error(&err.to_string(), error_buffer)
@@ -334,6 +334,8 @@ pub extern "C" fn index_search(
         Some(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, field_names_len) },
         None => return ptr::null_mut()
     };
+
+    //todo
 
     for field_name in field_names_slice {
         match assert_string(*field_name, error_buffer) {
@@ -492,6 +494,33 @@ pub extern "C" fn document_add_field(
     doc.tantivy_doc.add_text(field, field_value);
 }
 
+fn process_string_slice<'a, T, F>(
+    ptr: *mut *const c_char,
+    error_buffer: *mut *mut c_char,
+    len: usize,
+    mut func: F,
+) -> bool
+    where
+        F: FnMut(&'a str) -> Option<T> {
+    let slice = match assert_pointer(ptr, error_buffer) {
+        Some(ptr) => unsafe { slice::from_raw_parts(ptr, len) },
+        None => return false
+    };
+
+    for item in slice {
+        match assert_string(*item, error_buffer) {
+            Some(value) => {
+                match func(value) {
+                    None => return false,
+                    _ => {}
+                }
+            }
+            None => return false
+        }
+    }
+    return true;
+}
+
 #[no_mangle]
 pub extern "C" fn document_as_json(
     doc_ptr: *mut Document,
@@ -510,46 +539,23 @@ pub extern "C" fn document_as_json(
         None => return ptr::null_mut()
     };
 
-    let include_fields_slice = match assert_pointer(include_fields_ptr, error_buffer) {
-        Some(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, include_fields_len) },
-        None => return ptr::null_mut()
-    };
-
     let mut field_to_name = HashMap::new();
-
-    for field_name in include_fields_slice {
-        match assert_string(*field_name, error_buffer) {
-            Some(field_name) => {
-                match schema.get_field(field_name) {
-                    Ok(field) => {
-                        field_to_name.insert(field, field_name)
-                    }
-                    Err(err) => {
-                        set_error(&err.to_string(), error_buffer);
-                        return null_mut();
-                    }
-                };
+    if !process_string_slice(include_fields_ptr, error_buffer, include_fields_len, |field_name| {
+        return match schema.get_field(field_name) {
+            Ok(field) => {
+                field_to_name.insert(field, field_name);
+                Some(field_name)
             }
-            None => return null_mut()
-        }
-    };
-
-    let mut result_json: HashMap<&str, serde_json::Value> = HashMap::new();
-    result_json.insert("score", serde_json::to_value(doc.score).unwrap());
-    let doc = &doc.tantivy_doc;
-    for field_value in doc.field_values() {
-        match field_to_name.get(&field_value.field) {
-            Some(key) => {
-                result_json.insert(key, serde_json::to_value(
-                    extract_text_from_owned_value(
-                        &field_value.value).unwrap()
-                ).unwrap(), );
+            Err(err) => {
+                set_error(&err.to_string(), error_buffer);
+                None
             }
-            None => {}
-        }
-    }
+        };
+    }) { return null_mut(); }
 
-    match CString::new(json!(result_json).to_string()) {
+    let doc_json = document_to_json(&doc, &mut field_to_name);
+
+    match CString::new(json!(doc_json).to_string()) {
         Ok(cstr) => cstr.into_raw(),
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
