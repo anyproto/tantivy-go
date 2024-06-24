@@ -31,16 +31,18 @@ func (i *Index) AddAndConsumeDocuments(docs ...*Document) error {
 	for j, doc := range docs {
 		docsPtr[j] = doc.ptr
 	}
-	res := C.index_add_and_consume_documents(i.ptr, &docsPtr[0], C.uintptr_t(len(docs)), &errBuffer)
-	if res != 0 {
-		defer C.string_free(errBuffer)
-		return errors.New(C.GoString(errBuffer))
-	}
+	C.index_add_and_consume_documents(i.ptr, &docsPtr[0], C.uintptr_t(len(docs)), &errBuffer)
+	errorMessage := C.GoString(errBuffer)
+	defer C.string_free(errBuffer)
 
-	return nil
+	if len(errorMessage) == 0 {
+		return nil
+	} else {
+		return fmt.Errorf(errorMessage)
+	}
 }
 
-func (i *Index) DeleteAndConsumeDocuments(field string, deleteIds ...string) error {
+func (i *Index) DeleteDocuments(field string, deleteIds ...string) error {
 	if len(deleteIds) == 0 {
 		return nil
 	}
@@ -56,20 +58,25 @@ func (i *Index) DeleteAndConsumeDocuments(field string, deleteIds ...string) err
 	cDeleteIds := (**C.char)(unsafe.Pointer(&deleteIDsPtr[0]))
 
 	var errBuffer *C.char
-	res := C.index_delete_documents(i.ptr, cField, cDeleteIds, C.uintptr_t(len(deleteIds)), &errBuffer)
-	if res != 0 {
-		defer C.string_free(errBuffer)
-		return errors.New(C.GoString(errBuffer))
-	}
+	C.index_delete_documents(i.ptr, cField, cDeleteIds, C.uintptr_t(len(deleteIds)), &errBuffer)
+	errorMessage := C.GoString(errBuffer)
+	defer C.string_free(errBuffer)
 
-	return nil
+	if len(errorMessage) == 0 {
+		return nil
+	} else {
+		return fmt.Errorf(errorMessage)
+	}
 }
 
-func (i *Index) NumDocs() uint64 {
+func (i *Index) NumDocs() (uint64, error) {
 	var errBuffer *C.char
 	numDocs := C.index_num_docs(i.ptr, &errBuffer)
-
-	return uint64(numDocs)
+	if errBuffer != nil {
+		defer C.string_free(errBuffer)
+		return 0, errors.New(C.GoString(errBuffer))
+	}
+	return uint64(numDocs), nil
 }
 
 func (i *Index) Search(query string, docsLimit uintptr, fieldNames ...string) (*SearchResult, error) {
@@ -111,24 +118,31 @@ func (i *Index) RegisterTextAnalyzerNgram(tokenizerName string, minGram, maxGram
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
 	var errBuffer *C.char
-	res := C.index_register_text_analyzer_ngram(i.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.bool(prefixOnly), &errBuffer)
-	if res != 0 {
-		defer C.string_free(errBuffer)
-		return errors.New(C.GoString(errBuffer))
+	C.index_register_text_analyzer_ngram(i.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.bool(prefixOnly), &errBuffer)
+
+	errorMessage := C.GoString(errBuffer)
+	defer C.string_free(errBuffer)
+
+	if len(errorMessage) == 0 {
+		return nil
+	} else {
+		return fmt.Errorf(errorMessage)
 	}
-	return nil
 }
 
 func (i *Index) RegisterTextAnalyzerEdgeNgram(tokenizerName string, minGram, maxGram uintptr, limit uintptr) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
 	var errBuffer *C.char
-	res := C.index_register_text_analyzer_edge_ngram(i.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.uintptr_t(limit), &errBuffer)
-	if res != 0 {
-		defer C.string_free(errBuffer)
-		return errors.New(C.GoString(errBuffer))
+	C.index_register_text_analyzer_edge_ngram(i.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.uintptr_t(limit), &errBuffer)
+	errorMessage := C.GoString(errBuffer)
+	defer C.string_free(errBuffer)
+
+	if len(errorMessage) == 0 {
+		return nil
+	} else {
+		return fmt.Errorf(errorMessage)
 	}
-	return nil
 }
 
 func (i *Index) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintptr, lang string) error {
@@ -137,24 +151,32 @@ func (i *Index) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintp
 	cLang := C.CString(lang)
 	defer C.string_free(cLang)
 	var errBuffer *C.char
-	res := C.index_register_text_analyzer_simple(i.ptr, cTokenizerName, C.uintptr_t(textLimit), cLang, &errBuffer)
-	if res != 0 {
-		defer C.string_free(errBuffer)
-		return errors.New(C.GoString(errBuffer))
+	C.index_register_text_analyzer_simple(i.ptr, cTokenizerName, C.uintptr_t(textLimit), cLang, &errBuffer)
+
+	errorMessage := C.GoString(errBuffer)
+	defer C.string_free(errBuffer)
+
+	if len(errorMessage) == 0 {
+		return nil
+	} else {
+		return fmt.Errorf(errorMessage)
 	}
-	return nil
 }
 
 func (i *Index) RegisterTextAnalyzerRaw(tokenizerName string) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
 	var errBuffer *C.char
-	res := C.index_register_text_analyzer_raw(i.ptr, cTokenizerName, &errBuffer)
-	if res != 0 {
-		defer C.string_free(errBuffer)
-		return errors.New(C.GoString(errBuffer))
+	C.index_register_text_analyzer_raw(i.ptr, cTokenizerName, &errBuffer)
+
+	errorMessage := C.GoString(errBuffer)
+	defer C.string_free(errBuffer)
+
+	if len(errorMessage) == 0 {
+		return nil
+	} else {
+		return fmt.Errorf(errorMessage)
 	}
-	return nil
 }
 
 func GetSearchResults[T any](

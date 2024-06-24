@@ -1,8 +1,8 @@
-mod tantivy_go;
-mod clayer;
+mod tantivy_util;
+mod c_util;
 
 use std::ffi::{CString};
-use std::os::raw::{c_char, c_int};
+use std::os::raw::{c_char};
 use std::path::Path;
 use std::{fs, ptr, slice};
 use std::collections::HashMap;
@@ -12,8 +12,8 @@ use serde_json::json;
 use tantivy::{Index, IndexWriter, schema::*};
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{QueryParser};
-use crate::clayer::{assert_pointer, assert_string, set_error};
-use crate::tantivy_go::{Document, SearchResult, extract_text_from_owned_value, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_simple_tokenizer, register_raw_tokenizer, add_text_field, register_ngram_tokenizer};
+use crate::c_util::{assert_pointer, assert_string, set_error};
+use crate::tantivy_util::{Document, SearchResult, extract_text_from_owned_value, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_simple_tokenizer, register_raw_tokenizer, add_text_field, register_ngram_tokenizer};
 
 #[no_mangle]
 pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
@@ -26,37 +26,33 @@ pub extern "C" fn schema_builder_add_text_field(
     field_name_ptr: *const c_char,
     stored: bool,
     is_text: bool,
-    index_record_option_const: c_int,
+    index_record_option_const: usize,
     tokenizer_name_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
-) -> c_int {
+) {
     let builder = match assert_pointer(builder_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let field_name = match assert_string(field_name_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let index_record_option = match index_record_option_const {
         0 => IndexRecordOption::Basic,
         1 => IndexRecordOption::WithFreqs,
         2 => IndexRecordOption::WithFreqsAndPositions,
-        _ => {
-            set_error("index_record_option_const is wrong", error_buffer);
-            return -1;
-        }
+        _ => return set_error("index_record_option_const is wrong", error_buffer)
     };
 
     add_text_field(stored, is_text, builder, tokenizer_name, field_name, index_record_option);
-    0
 }
 
 #[no_mangle]
@@ -65,8 +61,8 @@ pub extern "C" fn schema_builder_build(
     error_buffer: *mut *mut c_char,
 ) -> *mut Schema {
     let builder = match assert_pointer(builder_ptr, error_buffer) {
-        Ok(value) => unsafe { Box::from_raw(value) },
-        Err(_) => return ptr::null_mut(),
+        Some(value) => unsafe { Box::from_raw(value) },
+        None => return ptr::null_mut()
     };
 
     Box::into_raw(Box::new(builder.build()))
@@ -79,13 +75,13 @@ pub extern "C" fn index_create_with_schema(
     error_buffer: *mut *mut c_char,
 ) -> *mut Index {
     let schema = match assert_pointer(schema_ptr, error_buffer) {
-        Ok(value) => value.clone(),
-        Err(_) => return ptr::null_mut(),
+        Some(value) => value.clone(),
+        None => return ptr::null_mut(),
     };
 
     let path = match assert_string(path_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(_) => return ptr::null_mut(),
+        Some(value) => value,
+        None => return ptr::null_mut(),
     };
 
     match fs::create_dir_all(Path::new(path)) {
@@ -122,19 +118,18 @@ pub extern "C" fn index_register_text_analyzer_ngram(
     max_gram: usize,
     prefix_only: bool,
     error_buffer: *mut *mut c_char,
-) -> c_int {
+) {
     let index = match assert_pointer(index_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     register_ngram_tokenizer(min_gram, max_gram, prefix_only, index, tokenizer_name);
-    0
 }
 
 #[no_mangle]
@@ -145,19 +140,18 @@ pub extern "C" fn index_register_text_analyzer_edge_ngram(
     max_gram: usize,
     limit: usize,
     error_buffer: *mut *mut c_char,
-) -> c_int {
+) {
     let index = match assert_pointer(index_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     register_edge_ngram_tokenizer(min_gram, max_gram, limit, index, tokenizer_name);
-    0
 }
 
 #[no_mangle]
@@ -167,24 +161,23 @@ pub extern "C" fn index_register_text_analyzer_simple(
     text_limit: usize,
     lang_str_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
-) -> c_int {
+) {
     let index = match assert_pointer(index_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let lang = match assert_string(lang_str_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     register_simple_tokenizer(text_limit, index, tokenizer_name, lang);
-    0
 }
 
 #[no_mangle]
@@ -192,19 +185,18 @@ pub extern "C" fn index_register_text_analyzer_raw(
     index_ptr: *mut Index,
     tokenizer_name_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
-) -> c_int {
+) {
     let index = match assert_pointer(index_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     register_raw_tokenizer(index, tokenizer_name);
-    0
 }
 
 #[no_mangle]
@@ -213,10 +205,10 @@ pub extern "C" fn index_add_and_consume_documents(
     docs_ptr: *mut *mut Document,
     docs_len: usize,
     error_buffer: *mut *mut c_char,
-) -> c_int {
+) {
     let index = match assert_pointer(index_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let mut index_writer = match index.writer(DOCUMENT_BUDGET_BYTES) {
@@ -225,26 +217,21 @@ pub extern "C" fn index_add_and_consume_documents(
     };
 
     let docs_slice = match assert_pointer(docs_ptr, error_buffer) {
-        Ok(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, docs_len) },
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return err;
-        }
+        Some(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, docs_len) },
+        None => return
     };
 
     for doc in docs_slice {
         match assert_pointer(*doc, error_buffer) {
-            Ok(doc) => {
+            Some(doc) => {
                 let doc = *unsafe { Box::from_raw(doc) };
                 let _ = index_writer.add_document(doc.tantivy_doc);
             }
-            Err(value) => { return value; }
+            None => return
         }
     }
 
-    if index_writer.commit().is_ok() {
-        0
-    } else {
+    if index_writer.commit().is_err() {
         set_error("Failed to commit document", error_buffer)
     }
 }
@@ -257,15 +244,15 @@ pub extern "C" fn index_delete_documents(
     delete_ids_ptr: *mut *const c_char,
     delete_ids_len: usize,
     error_buffer: *mut *mut c_char,
-) -> c_int {
+) {
     let index = match assert_pointer(index_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let field_name = match assert_string(field_name_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let mut index_writer: IndexWriter<TantivyDocument> = match index.writer(DOCUMENT_BUDGET_BYTES) {
@@ -277,43 +264,28 @@ pub extern "C" fn index_delete_documents(
     let field = match schema.get_field(field_name) {
         Ok(field) => {
             match { schema.get_field_entry(field).field_type() } {
-                FieldType::Str(_) => {
-                    field
-                }
-                &_ => {
-                    set_error("wrong field type", error_buffer);
-                    return -1;
-                }
+                FieldType::Str(_) => field,
+                &_ => return set_error("wrong field type", error_buffer)
             }
         }
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return -1;
-        }
+        Err(err) => return set_error(&err.to_string(), error_buffer)
     };
 
     let delete_ids_slice = match assert_pointer(delete_ids_ptr, error_buffer) {
-        Ok(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, delete_ids_len) },
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return err;
-        }
+        Some(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, delete_ids_len) },
+        None => return
     };
 
     for id in delete_ids_slice {
         match assert_string(*id, error_buffer) {
-            Ok(id_value) => {
+            Some(id_value) => {
                 let _ = index_writer.delete_term(Term::from_field_text(field, id_value));
             }
-            Err(value) => {
-                return value;
-            }
+            None => return
         }
     };
 
-    if index_writer.commit().is_ok() {
-        0
-    } else {
+    if index_writer.commit().is_err() {
         set_error("Failed to commit removing", error_buffer)
     }
 }
@@ -324,8 +296,8 @@ pub extern "C" fn index_num_docs(
     error_buffer: *mut *mut c_char,
 ) -> u64 {
     let index = match assert_pointer(index_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(_) => return 0,
+        Some(value) => value,
+        None => return 0,
     };
 
     return index.reader().unwrap().searcher().num_docs();
@@ -341,8 +313,8 @@ pub extern "C" fn index_search(
     docs_limit: usize,
 ) -> *mut SearchResult {
     let index = match assert_pointer(index_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(_) => return ptr::null_mut(),
+        Some(value) => value,
+        None => return ptr::null_mut()
     };
 
     let reader = match index.reader() {
@@ -359,16 +331,13 @@ pub extern "C" fn index_search(
     let mut fields = Vec::with_capacity(field_names_len);
 
     let field_names_slice = match assert_pointer(field_names_ptr, error_buffer) {
-        Ok(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, field_names_len) },
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return ptr::null_mut();
-        }
+        Some(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, field_names_len) },
+        None => return ptr::null_mut()
     };
 
     for field_name in field_names_slice {
         match assert_string(*field_name, error_buffer) {
-            Ok(field_name) => {
+            Some(field_name) => {
                 match schema.get_field(field_name) {
                     Ok(field) => {
                         fields.push(field);
@@ -379,15 +348,13 @@ pub extern "C" fn index_search(
                     }
                 };
             }
-            Err(_) => {
-                return null_mut();
-            }
+            None => return null_mut()
         }
     };
 
     let query = match assert_string(query_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(_) => return ptr::null_mut(),
+        Some(value) => value,
+        None => return ptr::null_mut()
     };
 
     let query_parser = QueryParser::for_index(index, fields);
@@ -433,6 +400,7 @@ pub extern "C" fn index_search(
     }))
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn index_free(index_ptr: *mut Index) {
     if !index_ptr.is_null() {
@@ -446,8 +414,8 @@ pub extern "C" fn search_result_get_size(
     error_buffer: *mut *mut c_char,
 ) -> usize {
     match assert_pointer(result_ptr, error_buffer) {
-        Ok(value) => value.size,
-        Err(_) => 0,
+        Some(value) => value.size,
+        None => 0
     }
 }
 
@@ -458,8 +426,8 @@ pub extern "C" fn search_result_get_doc(
     error_buffer: *mut *mut c_char,
 ) -> *mut Document {
     let result = match assert_pointer(result_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(_) => return ptr::null_mut(),
+        Some(value) => value,
+        None => return ptr::null_mut()
     };
 
     if index > result.documents.len() - 1 {
@@ -471,6 +439,7 @@ pub extern "C" fn search_result_get_doc(
     Box::into_raw(Box::new(doc))
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn search_result_free(result_ptr: *mut SearchResult) {
     if !result_ptr.is_null() {
@@ -493,37 +462,34 @@ pub extern "C" fn document_add_field(
     field_value_ptr: *const c_char,
     index_ptr: *mut Index,
     error_buffer: *mut *mut c_char,
-) -> c_int {
+) {
     let doc = match assert_pointer(doc_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let index = match assert_pointer(index_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let field_name = match assert_string(field_name_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
 
     let field_value = match assert_string(field_value_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(value) => return value,
+        Some(value) => value,
+        None => return
     };
-
-    debug!("field_name_str: {:?}, value {:?}", field_name, field_value);
 
     let schema = index.schema();
     let field = match schema.get_field(field_name) {
         Ok(field) => field,
-        Err(err) => return set_error(&err.to_string(), error_buffer),
+        Err(err) => return set_error(&err.to_string(), error_buffer)
     };
 
     doc.tantivy_doc.add_text(field, field_value);
-    0
 }
 
 #[no_mangle]
@@ -535,28 +501,25 @@ pub extern "C" fn document_as_json(
     error_buffer: *mut *mut c_char,
 ) -> *mut c_char {
     let doc = match assert_pointer(doc_ptr, error_buffer) {
-        Ok(value) => value,
-        Err(_) => return ptr::null_mut(),
+        Some(value) => value,
+        None => return ptr::null_mut()
     };
 
     let schema = match assert_pointer(schema_ptr, error_buffer) {
-        Ok(value) => value.clone(),
-        Err(_) => return ptr::null_mut(),
+        Some(value) => value.clone(),
+        None => return ptr::null_mut()
     };
 
     let include_fields_slice = match assert_pointer(include_fields_ptr, error_buffer) {
-        Ok(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, include_fields_len) },
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return ptr::null_mut();
-        }
+        Some(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, include_fields_len) },
+        None => return ptr::null_mut()
     };
 
     let mut field_to_name = HashMap::new();
 
     for field_name in include_fields_slice {
         match assert_string(*field_name, error_buffer) {
-            Ok(field_name) => {
+            Some(field_name) => {
                 match schema.get_field(field_name) {
                     Ok(field) => {
                         field_to_name.insert(field, field_name)
@@ -567,9 +530,7 @@ pub extern "C" fn document_as_json(
                     }
                 };
             }
-            Err(_) => {
-                return null_mut();
-            }
+            None => return null_mut()
         }
     };
 
@@ -589,10 +550,7 @@ pub extern "C" fn document_as_json(
     }
 
     match CString::new(json!(result_json).to_string()) {
-        Ok(cstr) => {
-            let x = cstr.into_raw();
-            x
-        }
+        Ok(cstr) => cstr.into_raw(),
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
             return ptr::null_mut();
@@ -600,6 +558,7 @@ pub extern "C" fn document_as_json(
     }
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn document_free(doc_ptr: *mut Document) {
     if !doc_ptr.is_null() {
@@ -607,6 +566,7 @@ pub extern "C" fn document_free(doc_ptr: *mut Document) {
     }
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn string_free(s: *mut c_char) {
     if !s.is_null() {
@@ -614,15 +574,17 @@ pub extern "C" fn string_free(s: *mut c_char) {
     }
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub unsafe extern "C" fn init_lib() -> u8 {
-    let mut log_level: &str = "info";
-    let parse_val: String;
-    if let Ok(existing_value) = std::env::var("ELV_RUST_LOG") {
-        parse_val = existing_value;
-        log_level = &parse_val;
-    }
-    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level))
-        .try_init();
-    0
+pub unsafe extern "C" fn init_lib(
+    log_level_ptr: *const c_char,
+    error_buffer: *mut *mut c_char,
+) {
+    let log_level = match assert_string(log_level_ptr, error_buffer) {
+        Some(value) => value,
+        None => return
+    };
+    let _ = env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or(log_level)
+    ).try_init();
 }

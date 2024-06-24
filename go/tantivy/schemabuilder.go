@@ -2,7 +2,10 @@ package tantivy
 
 //#include "bindings.h"
 import "C"
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 type (
 	SchemaBuilder struct{ ptr *C.SchemaBuilder }
@@ -58,20 +61,23 @@ func (b *SchemaBuilder) AddTextField(
 	defer C.string_free(cName)
 	defer C.string_free(cTokenizer)
 	var errBuffer *C.char
-	res := C.schema_builder_add_text_field(
+	C.schema_builder_add_text_field(
 		b.ptr,
 		cName,
 		C._Bool(stored),
 		C._Bool(isText),
-		C.int(indexRecordOption),
+		C.ulong(indexRecordOption),
 		cTokenizer,
 		&errBuffer,
 	)
-	if res != 0 {
-		defer C.string_free(errBuffer)
-		return errors.New(C.GoString(errBuffer))
+	errorMessage := C.GoString(errBuffer)
+	defer C.string_free(errBuffer)
+
+	if len(errorMessage) == 0 {
+		return nil
+	} else {
+		return fmt.Errorf(errorMessage)
 	}
-	return nil
 }
 
 func (b *SchemaBuilder) BuildSchema() (*Schema, error) {

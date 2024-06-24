@@ -16,31 +16,38 @@ package tantivy
 */
 import "C"
 import (
-	"os"
+	"fmt"
 	"sync"
 )
 
-const SimpleTokenizer = "simple"
-const NgramTokenizer = "ngram"
-const EdgeNgramTokenizer = "edge_ngram"
-const RawTokenizer = "raw"
+const TokenizerSimple = "simple"
+const TokenizerNgram = "ngram"
+const TokenizerEdgeNgram = "edge_ngram"
+const TokenizerRaw = "raw"
 
 var doOnce sync.Once
 
-func LibInit(directive ...string) {
+func LibInit(directive ...string) error {
 	var initVal string
+	var err error
 	doOnce.Do(func() {
 		if len(directive) == 0 {
 			initVal = "info"
 		} else {
 			initVal = directive[0]
 		}
-		os.Setenv("ELV_RUST_LOG", initVal)
-		os.Setenv("RUST_BACKTRACE", "full")
-		C.init_lib()
-	})
-}
 
-func Init() uint8 {
-	return uint8(C.init_lib())
+		cInitVal := C.CString(initVal)
+		defer C.string_free(cInitVal)
+		var errBuffer *C.char
+		C.init_lib(cInitVal, &errBuffer)
+
+		errorMessage := C.GoString(errBuffer)
+		defer C.string_free(errBuffer)
+
+		if len(errorMessage) == 0 {
+			err = fmt.Errorf(errorMessage)
+		}
+	})
+	return err
 }

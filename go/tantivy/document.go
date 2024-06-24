@@ -4,6 +4,7 @@ package tantivy
 import "C"
 import (
 	"errors"
+	"fmt"
 	"unsafe"
 )
 
@@ -20,12 +21,16 @@ func (d *Document) AddField(fieldName, fieldValue string, index *Index) error {
 	cFieldValue := C.CString(fieldValue)
 	defer C.string_free(cFieldValue)
 	var errBuffer *C.char
-	res := C.document_add_field(d.ptr, cFieldName, cFieldValue, index.ptr, &errBuffer)
-	if res != 0 {
-		defer C.string_free(errBuffer)
-		return errors.New(C.GoString(errBuffer))
+	C.document_add_field(d.ptr, cFieldName, cFieldValue, index.ptr, &errBuffer)
+
+	errorMessage := C.GoString(errBuffer)
+	defer C.string_free(errBuffer)
+
+	if len(errorMessage) == 0 {
+		return nil
+	} else {
+		return fmt.Errorf(errorMessage)
 	}
-	return nil
 }
 
 func (d *Document) ToJson(schema *Schema, includeFields ...string) (string, error) {

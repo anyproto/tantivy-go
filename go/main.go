@@ -6,9 +6,9 @@ import (
 	"github.com/anyproto/tantivy-go/go/tantivy"
 )
 
-const BodyName = "body"
-const IdName = "id"
-const TitleName = "title"
+const NameBody = "body"
+const NameId = "id"
+const NameTitle = "title"
 
 func main() {
 	// Initialize the library
@@ -22,11 +22,11 @@ func main() {
 
 	// Add fields to schema
 	err = builder.AddTextField(
-		TitleName,
+		NameTitle,
 		true,
 		true,
 		tantivy.IndexRecordOptionWithFreqsAndPositions,
-		tantivy.EdgeNgramTokenizer,
+		tantivy.TokenizerEdgeNgram,
 	)
 
 	if err != nil {
@@ -35,11 +35,11 @@ func main() {
 	}
 
 	err = builder.AddTextField(
-		IdName,
+		NameId,
 		true,
 		false,
 		tantivy.IndexRecordOptionBasic,
-		tantivy.RawTokenizer,
+		tantivy.TokenizerRaw,
 	)
 
 	if err != nil {
@@ -48,11 +48,11 @@ func main() {
 	}
 
 	err = builder.AddTextField(
-		BodyName,
+		NameBody,
 		true,
 		true,
 		tantivy.IndexRecordOptionWithFreqsAndPositions,
-		tantivy.SimpleTokenizer,
+		tantivy.TokenizerSimple,
 	)
 
 	if err != nil {
@@ -74,19 +74,19 @@ func main() {
 	}
 	defer index.Free()
 
-	err = index.RegisterTextAnalyzerSimple(tantivy.SimpleTokenizer, 40, tantivy.English)
+	err = index.RegisterTextAnalyzerSimple(tantivy.TokenizerSimple, 40, tantivy.English)
 	if err != nil {
 		fmt.Println("Failed to register text analyzer:", err)
 		return
 	}
 
-	err = index.RegisterTextAnalyzerEdgeNgram(tantivy.EdgeNgramTokenizer, 2, 4, 100)
+	err = index.RegisterTextAnalyzerEdgeNgram(tantivy.TokenizerEdgeNgram, 2, 4, 100)
 	if err != nil {
 		fmt.Println("Failed to register text analyzer:", err)
 		return
 	}
 
-	err = index.RegisterTextAnalyzerRaw(tantivy.RawTokenizer)
+	err = index.RegisterTextAnalyzerRaw(tantivy.TokenizerRaw)
 	if err != nil {
 		fmt.Println("Failed to register text analyzer:", err)
 		return
@@ -100,19 +100,19 @@ func main() {
 	}
 
 	// Add fields to document
-	err = doc.AddField(TitleName, "Example Title", index)
+	err = doc.AddField(NameTitle, "Example Title", index)
 	if err != nil {
 		fmt.Println("Failed to add field to document:", err)
 		return
 	}
 
-	err = doc.AddField(IdName, "1", index)
+	err = doc.AddField(NameId, "1", index)
 	if err != nil {
 		fmt.Println("Failed to add field to document:", err)
 		return
 	}
 
-	err = doc.AddField(BodyName, "Example body content.", index)
+	err = doc.AddField(NameBody, "Example body content.", index)
 	if err != nil {
 		fmt.Println("Failed to add field to document:", err)
 		return
@@ -126,7 +126,7 @@ func main() {
 	}
 
 	// Search index
-	result, err := index.Search("body", 100, BodyName)
+	result, err := index.Search("body", 100, NameBody)
 	if err != nil {
 		fmt.Println("Failed to search index:", err)
 		return
@@ -144,7 +144,7 @@ func main() {
 			break
 		}
 		// Get JSON representation of the document
-		jsonStr, err := doc.ToJson(schema, IdName, TitleName, BodyName)
+		jsonStr, err := doc.ToJson(schema, NameId, NameTitle, NameBody)
 		if err != nil {
 			fmt.Println("Failed to get document JSON:", err)
 		} else {
@@ -154,17 +154,17 @@ func main() {
 		doc.Free()
 	}
 
-	docs := index.NumDocs()
+	docs, err := index.NumDocs()
 	if err != nil {
 		fmt.Println("Failed to get number of documents:", err)
 		return
 	}
 	fmt.Println("Number of documents before:", docs)
-	err = index.DeleteAndConsumeDocuments(IdName, "1")
+	err = index.DeleteDocuments(NameId, "1")
 	if err != nil {
 		fmt.Println("Failed to delete document:", err)
 		return
 	}
-	docs = index.NumDocs()
+	docs, err = index.NumDocs()
 	fmt.Println("Number of documents after:", docs)
 }

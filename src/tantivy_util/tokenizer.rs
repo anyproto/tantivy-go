@@ -1,7 +1,7 @@
 use tantivy::Index;
 use tantivy::tokenizer::{LowerCaser, NgramTokenizer, RawTokenizer, RemoveLongFilter, SimpleTokenizer, TextAnalyzer};
-use crate::tantivy_go::{EdgeNgramTokenizer};
-use crate::tantivy_go::stemmer::create_stemmer;
+use crate::tantivy_util::{EdgeNgramTokenizer};
+use crate::tantivy_util::stemmer::create_stemmer;
 
 fn register_tokenizer(index: &mut Index, tokenizer_name: &str, text_analyzer: TextAnalyzer) {
     index.tokenizers().register(tokenizer_name, text_analyzer)

@@ -45,19 +45,19 @@ impl Tokenizer for EdgeNgramTokenizer {
             }
         }
 
-        BoxTokenStream::new(VecTokenStream { tokens, index: 0 })
+        BoxTokenStream::new(VecTokenStream { tokens, next_index: 0 })
     }
 }
 
 struct VecTokenStream {
     tokens: Vec<Token>,
-    index: usize,
+    next_index: usize,
 }
 
 impl TokenStream for VecTokenStream {
     fn advance(&mut self) -> bool {
-        if self.index < self.tokens.len() {
-            self.index += 1;
+        if self.next_index < self.tokens.len() {
+            self.next_index += 1;
             true
         } else {
             false
@@ -65,11 +65,11 @@ impl TokenStream for VecTokenStream {
     }
 
     fn token(&self) -> &Token {
-        &self.tokens[self.index - 1]
+        &self.tokens[self.next_index - 1]
     }
 
     fn token_mut(&mut self) -> &mut Token {
-        &mut self.tokens[self.index - 1]
+        &mut self.tokens[self.next_index - 1]
     }
 }
 
