@@ -4,7 +4,6 @@ package tantivy
 import "C"
 import (
 	"errors"
-	"fmt"
 )
 
 type (
@@ -70,14 +69,7 @@ func (b *SchemaBuilder) AddTextField(
 		cTokenizer,
 		&errBuffer,
 	)
-	errorMessage := C.GoString(errBuffer)
-	defer C.string_free(errBuffer)
-
-	if len(errorMessage) == 0 {
-		return nil
-	} else {
-		return fmt.Errorf(errorMessage)
-	}
+	return tryExtractError(errBuffer)
 }
 
 func (b *SchemaBuilder) BuildSchema() (*Schema, error) {
