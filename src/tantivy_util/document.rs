@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use tantivy::schema::Field;
 use crate::tantivy_util::{Document, extract_text_from_owned_value};
 
-pub fn document_to_json<'a>(doc: &&mut Document, field_to_name: &'a mut HashMap<Field, &str>) -> HashMap<&'a str, serde_json::Value> {
+pub fn convert_document_to_json<'a>(
+    doc: &&mut Document,
+    field_to_name: HashMap<Field, &'a str>,
+) -> HashMap<&'a str, serde_json::Value> {
     let mut result_json: HashMap<&str, serde_json::Value> = HashMap::new();
     result_json.insert("score", serde_json::to_value(doc.score).unwrap());
     let doc = &doc.tantivy_doc;
