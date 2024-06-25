@@ -3,15 +3,10 @@ mod c_util;
 
 use std::ffi::{CString};
 use std::os::raw::{c_char};
-use std::path::Path;
-use std::{fs, ptr, slice};
-use std::ptr::null_mut;
-use log::debug;
-use tantivy::{Index, IndexWriter, schema::*};
-use tantivy::directory::MmapDirectory;
-use tantivy::query::{QueryParser};
-use crate::c_util::{assert_pointer, assert_string, convert_document_as_json, process_string_slice, process_type_slice, schema_apply_for_field, set_error, start_lib_init};
-use crate::tantivy_util::{Document, SearchResult, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_simple_tokenizer, register_raw_tokenizer, add_text_field, register_ngram_tokenizer, get_string_field_entry};
+use std::{ptr};
+use tantivy::{Index, schema::*};
+use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_string, box_from, convert_document_as_json, create_index_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
+use crate::tantivy_util::{Document, SearchResult, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_simple_tokenizer, register_raw_tokenizer, add_text_field, register_ngram_tokenizer};
 
 #[no_mangle]
 pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
@@ -251,89 +246,10 @@ pub extern "C" fn index_search(
         None => return ptr::null_mut()
     };
 
-    let reader = match index.reader() {
-        Ok(reader) => reader,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return ptr::null_mut();
-        }
-    };
-
-    let searcher = reader.searcher();
-    let schema = index.schema();
-
-    let mut fields = Vec::with_capacity(field_names_len);
-
-    let field_names_slice = match assert_pointer(field_names_ptr, error_buffer) {
-        Some(field_names_ptr) => unsafe { slice::from_raw_parts(field_names_ptr, field_names_len) },
-        None => return ptr::null_mut()
-    };
-
-    //todo
-
-    for field_name in field_names_slice {
-        match assert_string(*field_name, error_buffer) {
-            Some(field_name) => {
-                match schema.get_field(field_name) {
-                    Ok(field) => {
-                        fields.push(field);
-                    }
-                    Err(err) => {
-                        set_error(&err.to_string(), error_buffer);
-                        return null_mut();
-                    }
-                };
-            }
-            None => return null_mut()
-        }
-    };
-
-    let query = match assert_string(query_ptr, error_buffer) {
-        Some(value) => value,
-        None => return ptr::null_mut()
-    };
-
-    let query_parser = QueryParser::for_index(index, fields);
-
-    let query = match query_parser.parse_query(query) {
-        Ok(query) => query,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return ptr::null_mut();
-        }
-    };
-
-    let top_docs = match searcher.search(
-        &query,
-        &tantivy::collector::TopDocs::with_limit(docs_limit),
-    ) {
-        Ok(top_docs) => top_docs,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return ptr::null_mut();
-        }
-    };
-
-    let mut documents = Vec::new();
-    for (score, doc_address) in top_docs {
-        match searcher.doc(doc_address) {
-            Ok(doc) => {
-                documents.push(Document {
-                    tantivy_doc: doc,
-                    score: score as usize,
-                });
-            }
-            Err(err) => {
-                set_error(&err.to_string(), error_buffer);
-                return ptr::null_mut();
-            }
-        };
+    match search(field_names_ptr, field_names_len, query_ptr, error_buffer, docs_limit, index) {
+        Ok(value) => value,
+        Err(_) => return ptr::null_mut(),
     }
-    let len = documents.len();
-    Box::into_raw(Box::new(SearchResult {
-        documents: documents,
-        size: len,
-    }))
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -472,112 +388,4 @@ pub unsafe extern "C" fn init_lib(
         None => return
     };
     start_lib_init(log_level);
-}
-
-fn drop_any<T>(ptr: *mut T) {
-    if !ptr.is_null() {
-        unsafe { drop(Box::from_raw(ptr)); }
-    }
-}
-
-fn box_from<T>(ptr: *mut T) -> Box<T> {
-    unsafe { Box::from_raw(ptr) }
-}
-
-fn create_index_with_schema(error_buffer: *mut *mut c_char, schema: Schema, path: &str) -> Result<*mut Index, ()> {
-    match fs::create_dir_all(Path::new(path)) {
-        Err(e) => {
-            debug!("Failed to create directories: {}", e);
-            set_error(&e.to_string(), error_buffer);
-            return Err(());
-        }
-        _ => {}
-    }
-
-    let dir = match MmapDirectory::open(path) {
-        Ok(dir) => dir,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return Err(());
-        }
-    };
-
-    Ok(match Index::open_or_create(dir, schema) {
-        Ok(index) => Box::into_raw(Box::new(index)),
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return Err(());
-        }
-    })
-}
-
-fn add_and_consume_documents(
-    docs_ptr: *mut *mut Document,
-    docs_len: usize,
-    error_buffer: *mut *mut c_char,
-    mut index_writer: IndexWriter,
-) {
-    if process_type_slice(docs_ptr, error_buffer, docs_len, |doc| {
-        let doc = *box_from(doc);
-        let _ = index_writer.add_document(doc.tantivy_doc);
-        Ok(())
-    }).is_err() {
-        return;
-    }
-
-    if index_writer.commit().is_err() {
-        set_error("Failed to commit document", error_buffer)
-    }
-}
-
-fn delete_docs(delete_ids_ptr: *mut *const c_char, delete_ids_len: usize, error_buffer: *mut *mut c_char, index: &mut Index, field_name: &str) {
-    let mut index_writer: IndexWriter<TantivyDocument> = match index.writer(DOCUMENT_BUDGET_BYTES) {
-        Ok(writer) => writer,
-        Err(err) => return
-    };
-
-    let schema = index.schema();
-
-    let field = match schema_apply_for_field::<Field, (), _>(error_buffer, schema.clone(), field_name, |field, field_name| {
-        match get_string_field_entry(schema.clone(), field) {
-            Ok(value) => Ok(value),
-            Err(err) => Err(())
-        }
-    }) {
-        Ok(value) => value,
-        Err(_) => return
-    };
-
-    if process_string_slice(delete_ids_ptr, error_buffer, delete_ids_len, |id_value| {
-        let _ = index_writer.delete_term(Term::from_field_text(field, id_value));
-        Ok(())
-    }).is_err() {
-        return;
-    }
-
-    if index_writer.commit().is_err() {
-        set_error("Failed to commit removing", error_buffer)
-    }
-}
-
-fn get_doc(index: usize, error_buffer: *mut *mut c_char, result: &mut SearchResult) -> Result<*mut Document, ()> {
-    if index > result.documents.len() - 1 {
-        set_error("wrong index", error_buffer);
-        return Err(());
-    }
-
-    let doc = result.documents[index].clone();
-    Ok(Box::into_raw(Box::new(doc)))
-}
-
-fn add_field(error_buffer: *mut *mut c_char, doc: &mut Document, index: &mut Index, field_name: &str, field_value: &str){
-    let schema = index.schema();
-    let field = match schema_apply_for_field::<Field, (), _>(error_buffer, schema, field_name, |field,_| {
-        Ok(field)
-    }) {
-        Ok(field) => field,
-        Err(_) => return
-    };
-
-    doc.tantivy_doc.add_text(field, field_value);
 }
