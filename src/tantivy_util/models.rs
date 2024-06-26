@@ -1,4 +1,3 @@
-
 use serde::Serialize;
 use tantivy::TantivyDocument;
 
@@ -12,8 +11,13 @@ pub struct Document {
 #[derive(Clone, Serialize)]
 pub struct Highlight {
     pub field_name: String,
-    pub fragment: String,
-    pub highlighted: Vec<(usize, usize)>,
+    pub fragment: Fragment,
+}
+
+#[derive(Clone, Serialize)]
+pub struct Fragment {
+    pub t: String, //to comply with bleve temporarily
+    pub r: Vec<(usize, usize)>, //to comply with bleve temporarily
 }
 
 pub struct SearchResult {

@@ -3,13 +3,15 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char};
 use std::{fs, slice};
 use std::path::Path;
+use base64::Engine;
+use base64::engine::general_purpose;
 use log::debug;
 use serde_json::json;
 use tantivy::directory::MmapDirectory;
 use tantivy::{Index, IndexWriter, Searcher, SnippetGenerator, TantivyDocument, Term};
 use tantivy::query::{Query, QueryParser};
 use tantivy::schema::{Field, Schema};
-use crate::tantivy_util::{convert_document_to_json, Document, DOCUMENT_BUDGET_BYTES, get_string_field_entry, Highlight, SearchResult};
+use crate::tantivy_util::{convert_document_to_json, Document, DOCUMENT_BUDGET_BYTES, Fragment, get_string_field_entry, Highlight, SearchResult};
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {
@@ -385,8 +387,10 @@ fn find_highlights(
             }
             highlights.push(Highlight {
                 field_name: schema.get_field_name(field_value.field).to_string(),
-                fragment: snippet.fragment().to_owned(),
-                highlighted,
+                fragment: Fragment {
+                    t: general_purpose::STANDARD.encode(&snippet.fragment().to_owned()), //to comply with bleve temporarily
+                    r: highlighted,
+                }
             });
         }
     }
