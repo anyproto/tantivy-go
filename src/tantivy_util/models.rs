@@ -11,6 +11,7 @@ pub struct Document {
 
 #[derive(Clone, Serialize)]
 pub struct Highlight {
+    pub field_name: String,
     pub fragment: String,
     pub highlighted: Vec<(usize, usize)>,
 }

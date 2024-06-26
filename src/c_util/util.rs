@@ -333,7 +333,8 @@ pub fn search(
     for (score, doc_address) in top_docs {
         match searcher.doc::<TantivyDocument>(doc_address) {
             Ok(doc) => {
-                let highlights = find_highlights(error_buffer, with_highlights, &searcher, &query, &doc)?;
+                let highlights = find_highlights(
+                    error_buffer, with_highlights, &searcher, &query, &doc, schema.clone())?;
                 documents.push(Document {
                     tantivy_doc: doc,
                     highlights,
@@ -361,6 +362,7 @@ fn find_highlights(
     searcher: &Searcher,
     query: &Box<dyn Query>,
     doc: &TantivyDocument,
+    schema: Schema,
 ) -> Result<Vec<Highlight>, ()> {
     let mut highlights: Vec<Highlight> = vec![];
     if with_highlights {
@@ -382,6 +384,7 @@ fn find_highlights(
                 continue;
             }
             highlights.push(Highlight {
+                field_name: schema.get_field_name(field_value.field).to_string(),
                 fragment: snippet.fragment().to_owned(),
                 highlighted,
             });

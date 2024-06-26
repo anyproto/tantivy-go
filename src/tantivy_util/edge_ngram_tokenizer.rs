@@ -1,5 +1,6 @@
 use tantivy::tokenizer::*;
 use tantivy::tokenizer::Token;
+use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone)]
 pub struct EdgeNgramTokenizer {
@@ -25,26 +26,38 @@ impl Tokenizer for EdgeNgramTokenizer {
     type TokenStream<'a> = BoxTokenStream<'a>;
 
     fn token_stream<'a>(&'a mut self, text: &'a str) -> BoxTokenStream<'a> {
-        let text = if text.len() < self.limit { text } else { text.split_at(self.limit).0 };
+        let mut copied_graphemes = String::new();
+        for (pos, grapheme) in text.grapheme_indices(true) {
+            if pos == self.limit { break; }
+            copied_graphemes.push_str(grapheme);
+        }
+        let text = copied_graphemes;
         let mut tokens = Vec::new();
-
-        for (position, word) in text.split_whitespace().enumerate() {
-            if word.len() < self.min_gram {
+        let words = text.unicode_words().collect::<Vec<&str>>();
+        let mut graphemes_count = 0;
+        for (position, word) in words.iter().enumerate() {
+            if graphemes_count == self.limit { break; }
+            let graphemes = word.graphemes(true);
+            let word_len = graphemes.count();
+            if word_len < self.min_gram {
                 continue;
             }
-            let max = std::cmp::min(self.max_gram, word.len());
+            let max = std::cmp::min(self.max_gram, word_len);
             for n in self.min_gram..=max {
-                let text: String = word[0..n].chars().collect();
+                let mut copied_graphemes = String::new();
+                for grapheme in word.graphemes(true).take(n) {
+                    copied_graphemes.push_str(grapheme);
+                }
+                graphemes_count += 1;
                 tokens.push(Token {
                     offset_from: 0,
                     offset_to: n,
+                    text: copied_graphemes,
                     position,
-                    text,
                     position_length: 1,
                 });
             }
         }
-
         BoxTokenStream::new(VecTokenStream { tokens, next_index: 0 })
     }
 }
@@ -80,6 +93,28 @@ mod tests {
     use tantivy::tokenizer::Token;
 
     #[test]
+    fn test_edge_ngram_tokenizer_thai() {
+        let mut tokenizer = EdgeNgramTokenizer::new(1, 4, 20);
+        let mut token_stream = tokenizer.token_stream("ตัวอย่ง");
+
+        let expected_tokens = vec![
+            Token { offset_from: 0, offset_to: 1, position: 0, text: "ตั".to_string(), position_length: 1 },
+            Token { offset_from: 0, offset_to: 1, position: 1, text: "ว".to_string(), position_length: 1 },
+            Token { offset_from: 0, offset_to: 1, position: 2, text: "อ".to_string(), position_length: 1 },
+            Token { offset_from: 0, offset_to: 1, position: 3, text: "ย่".to_string(), position_length: 1 },
+            Token { offset_from: 0, offset_to: 1, position: 4, text: "ง".to_string(), position_length: 1 },
+        ];
+
+        for expected_token in expected_tokens {
+            assert!(token_stream.advance());
+            let token = token_stream.token();
+            assert_eq!(token, &expected_token);
+        }
+
+        assert!(!token_stream.advance());
+    }
+
+    #[test]
     fn test_edge_ngram_tokenizer_basic() {
         let mut tokenizer = EdgeNgramTokenizer::new(2, 5, 20);
         let mut token_stream = tokenizer.token_stream("hello my friend");
@@ -93,7 +128,7 @@ mod tests {
             Token { offset_from: 0, offset_to: 2, position: 2, text: "fr".to_string(), position_length: 1 },
             Token { offset_from: 0, offset_to: 3, position: 2, text: "fri".to_string(), position_length: 1 },
             Token { offset_from: 0, offset_to: 4, position: 2, text: "frie".to_string(), position_length: 1 },
-            Token { offset_from: 0, offset_to: 5, position: 2, text: "frien".to_string(), position_length: 1 }
+            Token { offset_from: 0, offset_to: 5, position: 2, text: "frien".to_string(), position_length: 1 },
         ];
 
         for expected_token in expected_tokens {
@@ -115,7 +150,7 @@ mod tests {
             Token { offset_from: 0, offset_to: 3, position: 0, text: "hel".to_string(), position_length: 1 },
             Token { offset_from: 0, offset_to: 4, position: 0, text: "hell".to_string(), position_length: 1 },
             Token { offset_from: 0, offset_to: 5, position: 0, text: "hello".to_string(), position_length: 1 },
-            Token { offset_from: 0, offset_to: 2, position: 1, text: "my".to_string(), position_length: 1 }
+            Token { offset_from: 0, offset_to: 2, position: 1, text: "my".to_string(), position_length: 1 },
         ];
 
         for expected_token in expected_tokens {
@@ -134,7 +169,7 @@ mod tests {
 
         let expected_tokens = vec![
             Token { offset_from: 0, offset_to: 2, position: 0, text: "hi".to_string(), position_length: 1 },
-            Token { offset_from: 0, offset_to: 2, position: 1, text: "my".to_string(), position_length: 1 }
+            Token { offset_from: 0, offset_to: 2, position: 1, text: "my".to_string(), position_length: 1 },
         ];
 
         for expected_token in expected_tokens {
@@ -156,7 +191,7 @@ mod tests {
 
     #[test]
     fn test_edge_ngram_tokenizer_word_shorter_than_min_gram() {
-        let mut tokenizer = EdgeNgramTokenizer::new(4, 10, 10);
+        let mut tokenizer = EdgeNgramTokenizer::new(6, 10, 10);
         let mut token_stream = tokenizer.token_stream("hello");
 
         assert!(!token_stream.advance());
