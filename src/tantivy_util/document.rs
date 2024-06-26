@@ -8,6 +8,7 @@ pub fn convert_document_to_json<'a>(
 ) -> HashMap<&'a str, serde_json::Value> {
     let mut result_json: HashMap<&str, serde_json::Value> = HashMap::new();
     result_json.insert("score", serde_json::to_value(doc.score).unwrap());
+    result_json.insert("highlights", serde_json::to_value(&doc.highlights).unwrap());
     let doc = &doc.tantivy_doc;
     for field_value in doc.field_values() {
         match field_to_name.get(&field_value.field) {

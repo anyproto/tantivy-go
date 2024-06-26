@@ -65,7 +65,7 @@ func (i *Index) NumDocs() (uint64, error) {
 	return uint64(numDocs), nil
 }
 
-func (i *Index) Search(query string, docsLimit uintptr, fieldNames ...string) (*SearchResult, error) {
+func (i *Index) Search(query string, docsLimit uintptr, withHighlights bool, fieldNames ...string) (*SearchResult, error) {
 	if len(fieldNames) == 0 {
 		return nil, fmt.Errorf("fieldNames must not be empty")
 	}
@@ -87,6 +87,7 @@ func (i *Index) Search(query string, docsLimit uintptr, fieldNames ...string) (*
 		cQuery,
 		&errBuffer,
 		C.ulong(docsLimit),
+		C.bool(withHighlights),
 	)
 	if ptr == nil {
 		defer C.string_free(errBuffer)

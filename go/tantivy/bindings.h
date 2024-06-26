@@ -66,7 +66,8 @@ struct SearchResult *index_search(Index *index_ptr,
                                   uintptr_t field_names_len,
                                   const char *query_ptr,
                                   char **error_buffer,
-                                  uintptr_t docs_limit);
+                                  uintptr_t docs_limit,
+                                  bool with_highlights);
 
 void index_free(Index *index_ptr);
 

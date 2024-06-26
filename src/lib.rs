@@ -240,13 +240,14 @@ pub extern "C" fn index_search(
     query_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
     docs_limit: usize,
+    with_highlights: bool,
 ) -> *mut SearchResult {
     let index = match assert_pointer(index_ptr, error_buffer) {
         Some(value) => value,
         None => return ptr::null_mut()
     };
 
-    match search(field_names_ptr, field_names_len, query_ptr, error_buffer, docs_limit, index) {
+    match search(field_names_ptr, field_names_len, query_ptr, error_buffer, docs_limit, index, with_highlights) {
         Ok(value) => value,
         Err(_) => return ptr::null_mut(),
     }
@@ -296,6 +297,7 @@ pub extern "C" fn search_result_free(result_ptr: *mut SearchResult) {
 pub extern "C" fn document_create() -> *mut Document {
     Box::into_raw(Box::new(Document {
         tantivy_doc: TantivyDocument::new(),
+        highlights: vec![],
         score: 0,
     }))
 }

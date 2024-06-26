@@ -6,10 +6,10 @@ use std::path::Path;
 use log::debug;
 use serde_json::json;
 use tantivy::directory::MmapDirectory;
-use tantivy::{Index, IndexWriter, TantivyDocument, Term};
-use tantivy::query::QueryParser;
+use tantivy::{Index, IndexWriter, Searcher, SnippetGenerator, TantivyDocument, Term};
+use tantivy::query::{Query, QueryParser};
 use tantivy::schema::{Field, Schema};
-use crate::tantivy_util::{convert_document_to_json, Document, DOCUMENT_BUDGET_BYTES, get_string_field_entry, SearchResult};
+use crate::tantivy_util::{convert_document_to_json, Document, DOCUMENT_BUDGET_BYTES, get_string_field_entry, Highlight, SearchResult};
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {
@@ -238,7 +238,7 @@ pub fn delete_docs(
     }
 }
 
-pub fn get_doc(
+pub fn get_doc<'a>(
     index: usize,
     error_buffer: *mut *mut c_char,
     result: &mut SearchResult,
@@ -278,6 +278,7 @@ pub fn search(
     error_buffer: *mut *mut c_char,
     docs_limit: usize,
     index: &mut Index,
+    with_highlights: bool,
 ) -> Result<*mut SearchResult, ()> {
     let reader = match index.reader() {
         Ok(reader) => reader,
@@ -330,24 +331,63 @@ pub fn search(
 
     let mut documents = Vec::new();
     for (score, doc_address) in top_docs {
-        match searcher.doc(doc_address) {
+        match searcher.doc::<TantivyDocument>(doc_address) {
             Ok(doc) => {
+                let highlights = find_highlights(error_buffer, with_highlights, &searcher, &query, &doc)?;
                 documents.push(Document {
                     tantivy_doc: doc,
+                    highlights,
                     score: score as usize,
                 });
             }
+
             Err(err) => {
                 set_error(&err.to_string(), error_buffer);
                 return Err(());
             }
         };
     }
+
     let len = documents.len();
     Ok(Box::into_raw(Box::new(SearchResult {
         documents: documents,
         size: len,
     })))
+}
+
+fn find_highlights(
+    error_buffer: *mut *mut c_char,
+    with_highlights: bool,
+    searcher: &Searcher,
+    query: &Box<dyn Query>,
+    doc: &TantivyDocument,
+) -> Result<Vec<Highlight>, ()> {
+    let mut highlights: Vec<Highlight> = vec![];
+    if with_highlights {
+        for field_value in doc.field_values() {
+            let snippet_generator = match SnippetGenerator::create(
+                &searcher, query, field_value.field) {
+                Err(err) => {
+                    set_error(&err.to_string(), error_buffer);
+                    return Err(());
+                }
+                Ok(snippet_generator) => snippet_generator
+            };
+            let snippet = snippet_generator.snippet_from_doc(doc);
+            let highlighted: Vec<(usize, usize)> = snippet.highlighted().to_owned().iter().filter_map(|highlight| {
+                if highlight.is_empty() { None } else { Some((highlight.start, highlight.end)) }
+            }).collect();
+
+            if highlighted.is_empty() {
+                continue;
+            }
+            highlights.push(Highlight {
+                fragment: snippet.fragment().to_owned(),
+                highlighted,
+            });
+        }
+    }
+    Ok(highlights)
 }
 
 pub fn drop_any<T>(ptr: *mut T) {

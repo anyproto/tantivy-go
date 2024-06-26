@@ -126,7 +126,7 @@ func main() {
 	}
 
 	// Search index
-	result, err := index.Search("body", 100, NameBody)
+	result, err := index.Search("body", 100, true, NameBody)
 	if err != nil {
 		fmt.Println("Failed to search index:", err)
 		return
