@@ -1,3 +1,6 @@
+# Disclaimer
+Do not use in production
+
 # tantivy-go
 Tantivy go bindings
 
