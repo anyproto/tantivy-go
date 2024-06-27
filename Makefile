@@ -162,7 +162,7 @@ install-all: \
     install-darwin-arm64 \
     install-windows-amd64
 
-install-all-debug: \
+install-debug-all: \
     install-debug-linux-amd64-musl \
     install-debug-android-arm \
     install-debug-android-386 \

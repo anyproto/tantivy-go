@@ -86,7 +86,7 @@ func (i *Index) Search(query string, docsLimit uintptr, withHighlights bool, fie
 		C.uintptr_t(len(fieldNames)),
 		cQuery,
 		&errBuffer,
-		C.ulong(docsLimit),
+		pointerCType(docsLimit),
 		C.bool(withHighlights),
 	)
 	if ptr == nil {

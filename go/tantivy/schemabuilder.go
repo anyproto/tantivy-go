@@ -65,7 +65,7 @@ func (b *SchemaBuilder) AddTextField(
 		cName,
 		C._Bool(stored),
 		C._Bool(isText),
-		C.ulong(indexRecordOption),
+		pointerCType(indexRecordOption),
 		cTokenizer,
 		&errBuffer,
 	)
