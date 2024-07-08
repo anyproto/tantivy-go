@@ -51,7 +51,7 @@ impl Tokenizer for EdgeNgramTokenizer {
                 graphemes_count += 1;
                 tokens.push(Token {
                     offset_from: 0,
-                    offset_to: n,
+                    offset_to: copied_graphemes.len(),
                     text: copied_graphemes,
                     position,
                     position_length: 1,
@@ -98,11 +98,11 @@ mod tests {
         let mut token_stream = tokenizer.token_stream("ตัวอย่ง");
 
         let expected_tokens = vec![
-            Token { offset_from: 0, offset_to: 1, position: 0, text: "ตั".to_string(), position_length: 1 },
-            Token { offset_from: 0, offset_to: 1, position: 1, text: "ว".to_string(), position_length: 1 },
-            Token { offset_from: 0, offset_to: 1, position: 2, text: "อ".to_string(), position_length: 1 },
-            Token { offset_from: 0, offset_to: 1, position: 3, text: "ย่".to_string(), position_length: 1 },
-            Token { offset_from: 0, offset_to: 1, position: 4, text: "ง".to_string(), position_length: 1 },
+            Token { offset_from: 0, offset_to: 6, position: 0, text: "ตั".to_string(), position_length: 1 },
+            Token { offset_from: 0, offset_to: 3, position: 1, text: "ว".to_string(), position_length: 1 },
+            Token { offset_from: 0, offset_to: 3, position: 2, text: "อ".to_string(), position_length: 1 },
+            Token { offset_from: 0, offset_to: 6, position: 3, text: "ย่".to_string(), position_length: 1 },
+            Token { offset_from: 0, offset_to: 3, position: 4, text: "ง".to_string(), position_length: 1 },
         ];
 
         for expected_token in expected_tokens {

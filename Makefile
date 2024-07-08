@@ -1,14 +1,17 @@
 all:
 	@set -e;
 
-install-musl:
-	brew tap messense/macos-cross-toolchains && brew install x86_64-unknown-linux-musl
-
 setup:
-	@for target in $(TARGET_TO_GOOS_GOARCH) ; do \
-  		 target=$$(echo $$target | cut -d: -f1); \
-         rustup target add $$target ; \
-     done
+	@rustup target add x86_64-unknown-linux-musl
+	@rustup target add armv7-linux-androideabi
+	@rustup target add i686-linux-android
+	@rustup target add aarch64-linux-android
+	@rustup target add x86_64-linux-android
+	@rustup target add aarch64-apple-ios
+	@rustup target add x86_64-apple-ios
+	@rustup target add x86_64-apple-darwin
+	@rustup target add x86_64-apple-darwin
+	@rustup target add x86_64-pc-windows-gnu
 
 build-linux-amd64-musl:
 	env TARGET_CC=x86_64-linux-musl-gcc cargo build --release --target x86_64-unknown-linux-musl
@@ -109,28 +112,28 @@ install-debug-ios-amd64: build-debug-ios-amd64
 	@cp target/x86_64-apple-ios/debug/libtantivy_go.a go/libs/ios-amd64
 
 build-darwin-amd64:
-	ENV MACOSX_DEPLOYMENT_TARGET=13 cargo build --release --target x86_64-apple-darwin
+	ENV MACOSX_DEPLOYMENT_TARGET=10.15 cargo build --release --target x86_64-apple-darwin
 
 install-darwin-amd64: build-darwin-amd64
 	@mkdir -p go/libs/darwin-amd64
 	@cp target/x86_64-apple-darwin/release/libtantivy_go.a go/libs/darwin-amd64
 
 build-debug-darwin-amd64:
-	ENV MACOSX_DEPLOYMENT_TARGET=13 cargo build --target x86_64-apple-darwin
+	ENV MACOSX_DEPLOYMENT_TARGET=10.15 cargo build --target x86_64-apple-darwin
 
 install-debug-darwin-amd64: build-debug-darwin-amd64
 	@mkdir -p go/libs/darwin-amd64
 	@cp target/x86_64-apple-darwin/debug/libtantivy_go.a go/libs/darwin-amd64
 
 build-darwin-arm64:
-	ENV MACOSX_DEPLOYMENT_TARGET=13 cargo build --release --target aarch64-apple-darwin
+	ENV MACOSX_DEPLOYMENT_TARGET=10.15 cargo build --release --target aarch64-apple-darwin
 
 install-darwin-arm64: build-darwin-arm64
 	@mkdir -p go/libs/darwin-arm64
 	@cp target/aarch64-apple-darwin/release/libtantivy_go.a go/libs/darwin-arm64
 
 build-debug-darwin-arm64:
-	ENV MACOSX_DEPLOYMENT_TARGET=13 cargo build --target aarch64-apple-darwin
+	ENV MACOSX_DEPLOYMENT_TARGET=10.15 cargo build --target aarch64-apple-darwin
 
 install-debug-darwin-arm64: build-debug-darwin-arm64
 	@mkdir -p go/libs/darwin-arm64
@@ -173,3 +176,32 @@ install-debug-all: \
     install-debug-darwin-amd64 \
     install-debug-darwin-arm64 \
     install-debug-windows-amd64
+
+### Download release
+REPO := anyproto/tantivy-go
+VERSION := go/v0.0.3
+OUTPUT_DIR := go/libs
+
+TANTIVY_LIBS := android-386.tar.gz \
+         android-amd64.tar.gz \
+         android-arm.tar.gz \
+         android-arm64.tar.gz \
+         darwin-amd64.tar.gz \
+         darwin-arm64.tar.gz \
+         ios-amd64.tar.gz \
+         ios-arm64.tar.gz \
+         linux-amd64-musl.tar.gz \
+         windows-amd64.tar.gz
+
+define download_tantivy_lib
+	curl -L -o $(OUTPUT_DIR)/$(1) https://github.com/$(REPO)/releases/download/$(VERSION)/$(1)
+endef
+
+download-tantivy-all: $(TANTIVY_LIBS)
+
+$(TANTIVY_LIBS):
+	@mkdir -p $(OUTPUT_DIR)/$(shell echo $@ | cut -d'.' -f1)
+	$(call download_tantivy_lib,$@)
+	@tar -C $(OUTPUT_DIR)/$(shell echo $@ | cut -d'.' -f1) -xvzf $(OUTPUT_DIR)/$@
+	@rm -f $(OUTPUT_DIR)/$@
+	@echo "Extracted $@"

@@ -52,6 +52,7 @@ func (b *SchemaBuilder) AddTextField(
 	name string,
 	stored bool,
 	isText bool,
+	isFast bool,
 	indexRecordOption int,
 	tokenizer string,
 ) error {
@@ -65,6 +66,7 @@ func (b *SchemaBuilder) AddTextField(
 		cName,
 		C._Bool(stored),
 		C._Bool(isText),
+		C._Bool(isFast),
 		pointerCType(indexRecordOption),
 		cTokenizer,
 		&errBuffer,

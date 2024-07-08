@@ -1,17 +1,17 @@
+use std::{fs, slice};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char};
-use std::{fs, slice};
+use std::os::raw::c_char;
 use std::path::Path;
-use base64::Engine;
-use base64::engine::general_purpose;
+
 use log::debug;
 use serde_json::json;
+use tantivy::{Index, IndexWriter, TantivyDocument, Term};
 use tantivy::directory::MmapDirectory;
-use tantivy::{Index, IndexWriter, Searcher, SnippetGenerator, TantivyDocument, Term};
-use tantivy::query::{Query, QueryParser};
+use tantivy::query::{QueryParser};
 use tantivy::schema::{Field, Schema};
-use crate::tantivy_util::{convert_document_to_json, Document, DOCUMENT_BUDGET_BYTES, Fragment, get_string_field_entry, Highlight, SearchResult};
+
+use crate::tantivy_util::{convert_document_to_json, Document, DOCUMENT_BUDGET_BYTES, find_highlights, get_string_field_entry, SearchResult};
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {
@@ -64,8 +64,9 @@ pub fn process_type_slice<'a, T, F>(
     len: usize,
     mut func: F,
 ) -> Result<(), ()>
-    where
-        F: FnMut(*mut T) -> Result<(), ()> {
+where
+    F: FnMut(*mut T) -> Result<(), ()>,
+{
     let slice = match assert_pointer(ptr, error_buffer) {
         Some(ptr) => unsafe { slice::from_raw_parts(ptr, len) },
         None => return Err(()),
@@ -90,8 +91,9 @@ pub fn process_string_slice<'a, F>(
     len: usize,
     mut func: F,
 ) -> Result<(), ()>
-    where
-        F: FnMut(&'a str) -> Result<(), ()> {
+where
+    F: FnMut(&'a str) -> Result<(), ()>,
+{
     let slice = match assert_pointer(ptr, error_buffer) {
         Some(ptr) => unsafe { slice::from_raw_parts(ptr, len) },
         None => return Err(()),
@@ -335,8 +337,14 @@ pub fn search(
     for (score, doc_address) in top_docs {
         match searcher.doc::<TantivyDocument>(doc_address) {
             Ok(doc) => {
-                let highlights = find_highlights(
-                    error_buffer, with_highlights, &searcher, &query, &doc, schema.clone())?;
+                let highlights = match find_highlights(
+                    with_highlights, &searcher, &query, &doc, schema.clone()) {
+                    Ok(highlights) => highlights,
+                    Err(err) => {
+                        set_error(&err.to_string(), error_buffer);
+                        return Err(());
+                    }
+                };
                 documents.push(Document {
                     tantivy_doc: doc,
                     highlights,
@@ -356,45 +364,6 @@ pub fn search(
         documents: documents,
         size: len,
     })))
-}
-
-fn find_highlights(
-    error_buffer: *mut *mut c_char,
-    with_highlights: bool,
-    searcher: &Searcher,
-    query: &Box<dyn Query>,
-    doc: &TantivyDocument,
-    schema: Schema,
-) -> Result<Vec<Highlight>, ()> {
-    let mut highlights: Vec<Highlight> = vec![];
-    if with_highlights {
-        for field_value in doc.field_values() {
-            let snippet_generator = match SnippetGenerator::create(
-                &searcher, query, field_value.field) {
-                Err(err) => {
-                    set_error(&err.to_string(), error_buffer);
-                    return Err(());
-                }
-                Ok(snippet_generator) => snippet_generator
-            };
-            let snippet = snippet_generator.snippet_from_doc(doc);
-            let highlighted: Vec<(usize, usize)> = snippet.highlighted().to_owned().iter().filter_map(|highlight| {
-                if highlight.is_empty() { None } else { Some((highlight.start, highlight.end)) }
-            }).collect();
-
-            if highlighted.is_empty() {
-                continue;
-            }
-            highlights.push(Highlight {
-                field_name: schema.get_field_name(field_value.field).to_string(),
-                fragment: Fragment {
-                    t: general_purpose::STANDARD.encode(&snippet.fragment().to_owned()), //to comply with bleve temporarily
-                    r: highlighted,
-                }
-            });
-        }
-    }
-    Ok(highlights)
 }
 
 pub fn drop_any<T>(ptr: *mut T) {

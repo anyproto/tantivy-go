@@ -16,6 +16,7 @@ void schema_builder_add_text_field(SchemaBuilder *builder_ptr,
                                    const char *field_name_ptr,
                                    bool stored,
                                    bool is_text,
+                                   bool is_fast,
                                    uintptr_t index_record_option_const,
                                    const char *tokenizer_name_ptr,
                                    char **error_buffer);

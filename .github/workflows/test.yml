@@ -30,6 +30,7 @@ jobs:
           fetch-depth: 0
       - name: build rust
         run: |
+          cargo test
           make install-all
       - name: build go
         run: |
@@ -38,6 +39,7 @@ jobs:
           echo $(go env GOPATH)/bin >> $GITHUB_PATH
           cd go
           make build-verify
+          make test
       - name: Create archives
         run: |
           mkdir -p .release

@@ -25,6 +25,7 @@ func main() {
 		NameTitle,
 		true,
 		true,
+		false,
 		tantivy.IndexRecordOptionWithFreqsAndPositions,
 		tantivy.TokenizerEdgeNgram,
 	)
@@ -37,6 +38,7 @@ func main() {
 	err = builder.AddTextField(
 		NameId,
 		true,
+		false,
 		false,
 		tantivy.IndexRecordOptionBasic,
 		tantivy.TokenizerRaw,
@@ -51,6 +53,7 @@ func main() {
 		NameBody,
 		true,
 		true,
+		false,
 		tantivy.IndexRecordOptionWithFreqsAndPositions,
 		tantivy.TokenizerSimple,
 	)
@@ -167,4 +170,21 @@ func main() {
 	}
 	docs, err = index.NumDocs()
 	fmt.Println("Number of documents after:", docs)
+}
+
+type DocSample struct {
+	Title      string
+	Id         string
+	Body       string
+	Highlights []Highlight
+}
+
+type Fragment struct {
+	R [][2]int `json:"r"`
+	T string   `json:"t"`
+}
+
+type Highlight struct {
+	FieldName string   `json:"field_name"`
+	Fragment  Fragment `json:"fragment"`
 }

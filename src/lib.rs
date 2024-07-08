@@ -19,6 +19,7 @@ pub extern "C" fn schema_builder_add_text_field(
     field_name_ptr: *const c_char,
     stored: bool,
     is_text: bool,
+    is_fast: bool,
     index_record_option_const: usize,
     tokenizer_name_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
@@ -45,7 +46,7 @@ pub extern "C" fn schema_builder_add_text_field(
         _ => return set_error("index_record_option_const is wrong", error_buffer)
     };
 
-    add_text_field(stored, is_text, builder, tokenizer_name, field_name, index_record_option);
+    add_text_field(stored, is_text, is_fast, builder, tokenizer_name, field_name, index_record_option);
 }
 
 #[no_mangle]
@@ -249,7 +250,7 @@ pub extern "C" fn index_search(
 
     match search(field_names_ptr, field_names_len, query_ptr, error_buffer, docs_limit, index, with_highlights) {
         Ok(value) => value,
-        Err(_) => return ptr::null_mut(),
+        Err(_) => return ptr::null_mut()
     }
 }
 
