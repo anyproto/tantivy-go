@@ -1,12 +1,14 @@
+use std::ffi::CString;
+use std::os::raw::c_char;
+use std::ptr;
+
+use tantivy::{Index, schema::*};
+
+use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_string, box_from, convert_document_as_json, create_index_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
+use crate::tantivy_util::{add_text_field, Document, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, SearchResult};
+
 mod tantivy_util;
 mod c_util;
-
-use std::ffi::{CString};
-use std::os::raw::{c_char};
-use std::{ptr};
-use tantivy::{Index, schema::*};
-use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_string, box_from, convert_document_as_json, create_index_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
-use crate::tantivy_util::{Document, SearchResult, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_simple_tokenizer, register_raw_tokenizer, add_text_field, register_ngram_tokenizer};
 
 #[no_mangle]
 pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
@@ -103,7 +105,10 @@ pub extern "C" fn index_register_text_analyzer_ngram(
         None => return
     };
 
-    register_ngram_tokenizer(min_gram, max_gram, prefix_only, index, tokenizer_name);
+    match register_ngram_tokenizer(min_gram, max_gram, prefix_only, index, tokenizer_name) {
+        Err(err) => return set_error(&err.to_string(), error_buffer),
+        _ => return
+    };
 }
 
 #[no_mangle]

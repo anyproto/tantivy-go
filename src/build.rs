@@ -1,6 +1,7 @@
 extern crate cbindgen;
 
 use std::env;
+use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 
@@ -23,17 +24,19 @@ fn add_typedefs() -> io::Result<()> {
     Ok(())
 }
 
-fn main() {
-    let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+fn main() -> Result<(), Box<dyn Error>> {
+    let crate_dir = env::var("CARGO_MANIFEST_DIR")?;
     let mut config: cbindgen::Config = Default::default();
     config.language = cbindgen::Language::C;
 
-    cbindgen::Builder::new()
+    match cbindgen::Builder::new()
         .with_crate(crate_dir)
         .with_config(config)
-        .generate()
-        .expect("Unable to generate bindings")
-        .write_to_file("go/tantivy/bindings.h");
+        .generate() {
+        Ok(bindings) => bindings.write_to_file("go/tantivy/bindings.h"),
+        Err(e) => return Err(Box::new(e)),
+    };
 
-    add_typedefs().unwrap()
+    add_typedefs()?;
+    Ok(())
 }
