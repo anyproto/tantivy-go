@@ -1,7 +1,7 @@
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
-
+use logcall::logcall;
 use tantivy::{Index, schema::*};
 
 use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_string, box_from, convert_document_as_json, create_index_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
@@ -10,11 +10,13 @@ use crate::tantivy_util::{add_text_field, Document, DOCUMENT_BUDGET_BYTES, regis
 mod tantivy_util;
 mod c_util;
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
     Box::into_raw(Box::new(Schema::builder()))
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn schema_builder_add_text_field(
     builder_ptr: *mut SchemaBuilder,
@@ -51,6 +53,7 @@ pub extern "C" fn schema_builder_add_text_field(
     add_text_field(stored, is_text, is_fast, builder, tokenizer_name, field_name, index_record_option);
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn schema_builder_build(
     builder_ptr: *mut SchemaBuilder,
@@ -64,6 +67,7 @@ pub extern "C" fn schema_builder_build(
     Box::into_raw(Box::new(builder.build()))
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_create_with_schema(
     path_ptr: *const c_char,
@@ -86,6 +90,7 @@ pub extern "C" fn index_create_with_schema(
     }
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_register_text_analyzer_ngram(
     index_ptr: *mut Index,
@@ -111,6 +116,7 @@ pub extern "C" fn index_register_text_analyzer_ngram(
     };
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_register_text_analyzer_edge_ngram(
     index_ptr: *mut Index,
@@ -133,6 +139,7 @@ pub extern "C" fn index_register_text_analyzer_edge_ngram(
     register_edge_ngram_tokenizer(min_gram, max_gram, limit, index, tokenizer_name);
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_register_text_analyzer_simple(
     index_ptr: *mut Index,
@@ -159,6 +166,7 @@ pub extern "C" fn index_register_text_analyzer_simple(
     register_simple_tokenizer(text_limit, index, tokenizer_name, lang);
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_register_text_analyzer_raw(
     index_ptr: *mut Index,
@@ -178,6 +186,7 @@ pub extern "C" fn index_register_text_analyzer_raw(
     register_raw_tokenizer(index, tokenizer_name);
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_add_and_consume_documents(
     index_ptr: *mut Index,
@@ -198,6 +207,7 @@ pub extern "C" fn index_add_and_consume_documents(
     add_and_consume_documents(docs_ptr, docs_len, error_buffer, index_writer);
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_delete_documents(
     index_ptr: *mut Index,
@@ -219,6 +229,7 @@ pub extern "C" fn index_delete_documents(
     delete_docs(delete_ids_ptr, delete_ids_len, error_buffer, index, field_name);
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_num_docs(
     index_ptr: *mut Index,
@@ -238,6 +249,7 @@ pub extern "C" fn index_num_docs(
     }
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_search(
     index_ptr: *mut Index,
@@ -260,11 +272,13 @@ pub extern "C" fn index_search(
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[logcall]
 #[no_mangle]
 pub extern "C" fn index_free(index_ptr: *mut Index) {
     drop_any(index_ptr)
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn search_result_get_size(
     result_ptr: *mut SearchResult,
@@ -276,6 +290,7 @@ pub extern "C" fn search_result_get_size(
     }
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn search_result_get_doc(
     result_ptr: *mut SearchResult,
@@ -294,11 +309,13 @@ pub extern "C" fn search_result_get_doc(
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[logcall]
 #[no_mangle]
 pub extern "C" fn search_result_free(result_ptr: *mut SearchResult) {
     drop_any(result_ptr)
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn document_create() -> *mut Document {
     Box::into_raw(Box::new(Document {
@@ -308,6 +325,7 @@ pub extern "C" fn document_create() -> *mut Document {
     }))
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn document_add_field(
     doc_ptr: *mut Document,
@@ -339,6 +357,7 @@ pub extern "C" fn document_add_field(
     add_field(error_buffer, doc, index, field_name, field_value);
 }
 
+#[logcall]
 #[no_mangle]
 pub extern "C" fn document_as_json(
     doc_ptr: *mut Document,
@@ -372,12 +391,14 @@ pub extern "C" fn document_as_json(
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[logcall]
 #[no_mangle]
 pub extern "C" fn document_free(doc_ptr: *mut Document) {
     drop_any(doc_ptr)
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[logcall]
 #[no_mangle]
 pub extern "C" fn string_free(s: *mut c_char) {
     if !s.is_null() {
@@ -386,6 +407,7 @@ pub extern "C" fn string_free(s: *mut c_char) {
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[logcall]
 #[no_mangle]
 pub unsafe extern "C" fn init_lib(
     log_level_ptr: *const c_char,

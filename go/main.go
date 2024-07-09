@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/anyproto/tantivy-go/go/tantivy"
 )
@@ -70,6 +71,7 @@ func main() {
 		return
 	}
 	// Create index with schema
+	_ = os.RemoveAll("index_dir")
 	index, err := tantivy.NewIndexWithSchema("index_dir", schema)
 	if err != nil {
 		fmt.Println("Failed to create index:", err)
