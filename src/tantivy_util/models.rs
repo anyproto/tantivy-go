@@ -5,7 +5,7 @@ use tantivy::TantivyDocument;
 pub struct Document {
     pub tantivy_doc: TantivyDocument,
     pub highlights: Vec<Highlight>,
-    pub score: usize,
+    pub score: f32,
 }
 
 #[derive(Clone, Serialize)]

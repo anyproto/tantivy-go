@@ -348,7 +348,7 @@ pub fn search(
                 documents.push(Document {
                     tantivy_doc: doc,
                     highlights,
-                    score: score as usize,
+                    score: score,
                 });
             }
 

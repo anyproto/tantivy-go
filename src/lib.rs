@@ -321,7 +321,7 @@ pub extern "C" fn document_create() -> *mut Document {
     Box::into_raw(Box::new(Document {
         tantivy_doc: TantivyDocument::new(),
         highlights: vec![],
-        score: 0,
+        score: 0.0,
     }))
 }
 
