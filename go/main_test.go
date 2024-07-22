@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/anyproto/tantivy-go/go/tantivy"
@@ -16,11 +18,11 @@ const minGram = 2
 func Test(t *testing.T) {
 
 	t.Run("docs search and remove - when by raw Id", func(t *testing.T) {
-		err, schema, index := fx(t, limit, minGram, false)
+		schema, index := fx(t, limit, minGram, false)
 
 		defer index.Free()
 
-		doc, err := addDoc(t, "Example Title", "Example body content.", "1", index)
+		doc, err := addDoc(t, "Example Title", "Example body doing.", "1", index)
 		require.NoError(t, err)
 
 		err = index.AddAndConsumeDocuments(doc)
@@ -46,13 +48,13 @@ func Test(t *testing.T) {
 			require.Equal(t, DocSample{
 				"Example Title",
 				"1",
-				"Example body content.",
+				"Example body doing.",
 				[]Highlight{
 					{
 						NameBody,
 						Fragment{
 							[][2]int{{8, 12}},
-							"RXhhbXBsZSBib2R5IGNvbnRlbnQ=",
+							base64.StdEncoding.EncodeToString([]byte("Example body doing")),
 						},
 					}},
 			},
@@ -70,7 +72,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs remove - when by body token", func(t *testing.T) {
-		err, _, index := fx(t, limit, minGram, false)
+		_, index := fx(t, limit, minGram, false)
 
 		defer index.Free()
 
@@ -93,7 +95,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs remove - when by wrong body token", func(t *testing.T) {
-		err, _, index := fx(t, limit, minGram, false)
+		_, index := fx(t, limit, minGram, false)
 
 		defer index.Free()
 
@@ -116,7 +118,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs remove - when by proper token and wrong field length", func(t *testing.T) {
-		err, _, index := fx(t, 1, minGram, false)
+		_, index := fx(t, 1, minGram, false)
 
 		defer index.Free()
 
@@ -138,7 +140,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search and remove - when thai", func(t *testing.T) {
-		err, _, index := fx(t, limit, 1, false)
+		_, index := fx(t, limit, 1, false)
 
 		defer index.Free()
 
@@ -178,7 +180,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search and remove - when fast", func(t *testing.T) {
-		err, _, index := fx(t, limit, minGram, false)
+		_, index := fx(t, limit, minGram, false)
 
 		defer index.Free()
 
@@ -202,6 +204,60 @@ func Test(t *testing.T) {
 		err = index.DeleteDocuments(NameId, "1")
 		docs, err = index.NumDocs()
 		require.NoError(t, err)
+		require.Equal(t, uint64(0), docs)
+	})
+
+	t.Run("docs search and remove - when title", func(t *testing.T) {
+		schema, index := fx(t, limit, minGram, false)
+
+		defer index.Free()
+
+		doc, err := addDoc(t, "Create Body", "Example title content.", "1", index)
+		require.NoError(t, err)
+
+		err = index.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		result, err := index.Search("create", 100, true, NameTitle)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		require.Equal(t, 1, int(size))
+
+		results, err := tantivy.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+			var doc DocSample
+			return doc, json.Unmarshal([]byte(jsonStr), &doc)
+		}, NameId, NameTitle, NameBody)
+		require.NoError(t, err)
+
+		require.Equal(t, len(results), int(size))
+		require.NoError(t, err)
+
+		for next := range results {
+			model := results[next].(DocSample)
+			require.Equal(t, DocSample{
+				"Create Body",
+				"1",
+				"Example title content.",
+				[]Highlight{
+					{
+						NameTitle,
+						Fragment{
+							[][2]int{{0, 2}, {0, 3}, {0, 4}},
+							base64.StdEncoding.EncodeToString([]byte("Crea")),
+						},
+					}},
+			},
+				model)
+		}
+
+		docs, err := index.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), docs)
+
+		err = index.DeleteDocuments(NameId, "1")
+		require.NoError(t, err)
+		docs, err = index.NumDocs()
 		require.Equal(t, uint64(0), docs)
 	})
 }
@@ -230,8 +286,9 @@ func fx(
 	limit uintptr,
 	minGram uintptr,
 	isFastId bool,
-) (error, *tantivy.Schema, *tantivy.Index) {
-	tantivy.LibInit("release")
+) (*tantivy.Schema, *tantivy.Index) {
+	err := tantivy.LibInit("release")
+	assert.NoError(t, err)
 	builder, err := tantivy.NewSchemaBuilder()
 	require.NoError(t, err)
 
@@ -280,5 +337,5 @@ func fx(
 
 	err = index.RegisterTextAnalyzerRaw(tantivy.TokenizerRaw)
 	require.NoError(t, err)
-	return err, schema, index
+	return schema, index
 }

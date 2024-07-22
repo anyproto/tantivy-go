@@ -27,7 +27,7 @@ func (r *SearchResult) GetSize() (uint64, error) {
 	errorMessage := C.GoString(errBuffer)
 	defer C.string_free(errBuffer) // Освобождение C строки после использования
 
-	if len(errorMessage) == 0 {
+	if errorMessage == "" {
 		return uint64(size), nil
 	} else {
 		return uint64(0), fmt.Errorf(errorMessage)

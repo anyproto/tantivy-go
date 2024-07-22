@@ -8,7 +8,7 @@ func tryExtractError(errBuffer *C.char) error {
 	errorMessage := C.GoString(errBuffer)
 	defer C.string_free(errBuffer)
 
-	if len(errorMessage) == 0 {
+	if errorMessage == "" {
 		return nil
 	} else {
 		return fmt.Errorf(errorMessage)

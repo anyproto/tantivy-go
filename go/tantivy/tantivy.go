@@ -45,7 +45,7 @@ func LibInit(directive ...string) error {
 		errorMessage := C.GoString(errBuffer)
 		defer C.string_free(errBuffer)
 
-		if len(errorMessage) == 0 {
+		if errorMessage != "" {
 			err = fmt.Errorf(errorMessage)
 		}
 	})
