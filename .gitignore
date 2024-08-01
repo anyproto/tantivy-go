@@ -1,12 +1,1 @@
-.idea/*
-linux-compiler-musl-x86/*
-!.idea/codeStyles/
-*.iml
-debug/
-target/
-
-Cargo.lock
-
-**/*.rs.bk
-
-*.pdb
+libs/*

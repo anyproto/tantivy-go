@@ -30,6 +30,7 @@ jobs:
           fetch-depth: 0
       - name: build rust
         run: |
+          cd rust
           cargo test
           make install-all
       - name: build go
@@ -37,13 +38,12 @@ jobs:
           echo GOPATH=$(go env GOPATH) >> $GITHUB_ENV
           echo GOBIN=$(go env GOPATH)/bin >> $GITHUB_ENV
           echo $(go env GOPATH)/bin >> $GITHUB_PATH
-          cd go
           make build-verify
           make test
       - name: Create archives
         run: |
           mkdir -p .release
-          for dir in go/libs/*/ ; do
+          for dir in libs/*/ ; do
             dir_name=$(basename "$dir")
             tar -czf ".release/${dir_name}.tar.gz" -C "$dir" .
           done

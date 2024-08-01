@@ -1,4 +1,4 @@
-package main
+package tantivy_test
 
 import (
 	"encoding/base64"
@@ -9,11 +9,32 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/anyproto/tantivy-go/go/tantivy"
+	"github.com/anyproto/tantivy-go/tantivy"
 )
+
+const NameBody = "body"
+const NameId = "id"
+const NameTitle = "title"
 
 const limit = 40
 const minGram = 2
+
+type DocSample struct {
+	Title      string
+	Id         string
+	Body       string
+	Highlights []Highlight
+}
+
+type Fragment struct {
+	R [][2]int `json:"r"`
+	T string   `json:"t"`
+}
+
+type Highlight struct {
+	FieldName string   `json:"field_name"`
+	Fragment  Fragment `json:"fragment"`
+}
 
 func Test(t *testing.T) {
 

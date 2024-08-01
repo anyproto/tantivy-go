@@ -1,4 +1,4 @@
-module github.com/anyproto/tantivy-go/go
+module github.com/anyproto/tantivy-go
 
 go 1.22
 

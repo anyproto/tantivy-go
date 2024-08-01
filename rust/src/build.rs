@@ -5,18 +5,20 @@ use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 
+const FILE_PATH: &str = "../tantivy/bindings.h";
+
 fn add_typedefs() -> io::Result<()> {
-    let file_path = "go/tantivy/bindings.h";
+
     let include = "#include <binding_typedefs.h>\n";
 
-    let mut existing_content = fs::read_to_string(file_path)?;
+    let mut existing_content = fs::read_to_string(FILE_PATH)?;
 
     existing_content.insert_str(0, include);
 
     let mut file = OpenOptions::new()
         .write(true)
         .truncate(true)
-        .open(file_path)?;
+        .open(FILE_PATH)?;
 
     file.write_all(existing_content.as_bytes())?;
     file.flush()?;
@@ -33,7 +35,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .with_crate(crate_dir)
         .with_config(config)
         .generate() {
-        Ok(bindings) => bindings.write_to_file("go/tantivy/bindings.h"),
+        Ok(bindings) => bindings.write_to_file(FILE_PATH),
         Err(e) => return Err(Box::new(e)),
     };
 

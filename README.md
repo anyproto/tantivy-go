@@ -8,7 +8,7 @@ Do not use in production.
 ## Installation
 
 ```bash
-go get github.com/anyproto/tantivy-go/go
+go get github.com/anyproto/tantivy-go
 ```
 
 Ensure your libraries are in your `ld` path.

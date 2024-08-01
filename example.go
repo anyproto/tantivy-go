@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anyproto/tantivy-go/go/tantivy"
+	"github.com/anyproto/tantivy-go/tantivy"
 )
 
 const NameBody = "body"
@@ -172,21 +172,4 @@ func main() {
 	}
 	docs, err = index.NumDocs()
 	fmt.Println("Number of documents after:", docs)
-}
-
-type DocSample struct {
-	Title      string
-	Id         string
-	Body       string
-	Highlights []Highlight
-}
-
-type Fragment struct {
-	R [][2]int `json:"r"`
-	T string   `json:"t"`
-}
-
-type Highlight struct {
-	FieldName string   `json:"field_name"`
-	Fragment  Fragment `json:"fragment"`
 }
