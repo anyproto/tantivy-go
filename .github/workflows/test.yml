@@ -1,7 +1,7 @@
 on:
   push:
     tags:
-      - 'go/v*.*.*'
+      - 'v*.*.*'
   pull_request:
   workflow_dispatch:
 

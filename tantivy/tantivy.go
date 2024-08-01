@@ -27,6 +27,14 @@ const TokenizerRaw = "raw"
 
 var doOnce sync.Once
 
+// LibInit initializes the library with an optional directive.
+//
+// Parameters:
+//   - directive: A variadic parameter that allows specifying an initialization directive.
+//     If no directive is provided, the default value "info" is used.
+//
+// Returns:
+// - An error if the initialization fails.
 func LibInit(directive ...string) error {
 	var initVal string
 	var err error

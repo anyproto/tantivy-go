@@ -10,6 +10,15 @@ import (
 
 type Index struct{ ptr *C.Index }
 
+// NewIndexWithSchema creates a new instance of Index with the provided schema.
+//
+// Parameters:
+//   - path: The path to the index as a string.
+//   - schema: A pointer to the Schema to be used.
+//
+// Returns:
+//   - *Index: A pointer to a newly created Index instance.
+//   - error: An error if the index creation fails.
 func NewIndexWithSchema(path string, schema *Schema) (*Index, error) {
 	cPath := C.CString(path)
 	defer C.string_free(cPath)
@@ -22,6 +31,13 @@ func NewIndexWithSchema(path string, schema *Schema) (*Index, error) {
 	return &Index{ptr: ptr}, nil
 }
 
+// AddAndConsumeDocuments adds and consumes the provided documents to the index.
+//
+// Parameters:
+//   - docs: A variadic parameter of pointers to Document to be added and consumed.
+//
+// Returns:
+//   - error: An error if adding and consuming the documents fails.
 func (i *Index) AddAndConsumeDocuments(docs ...*Document) error {
 	if len(docs) == 0 {
 		return nil
@@ -35,6 +51,14 @@ func (i *Index) AddAndConsumeDocuments(docs ...*Document) error {
 	return tryExtractError(errBuffer)
 }
 
+// DeleteDocuments deletes documents from the index based on the specified field and IDs.
+//
+// Parameters:
+//   - field: The field name to match against the document IDs.
+//   - deleteIds: A variadic parameter of document IDs to be deleted.
+//
+// Returns:
+//   - error: An error if deleting the documents fails.
 func (i *Index) DeleteDocuments(field string, deleteIds ...string) error {
 	if len(deleteIds) == 0 {
 		return nil
@@ -55,6 +79,11 @@ func (i *Index) DeleteDocuments(field string, deleteIds ...string) error {
 	return tryExtractError(errBuffer)
 }
 
+// NumDocs returns the number of documents in the index.
+//
+// Returns:
+//   - uint64: The number of documents.
+//   - error: An error if retrieving the document count fails.
 func (i *Index) NumDocs() (uint64, error) {
 	var errBuffer *C.char
 	numDocs := C.index_num_docs(i.ptr, &errBuffer)
@@ -65,6 +94,17 @@ func (i *Index) NumDocs() (uint64, error) {
 	return uint64(numDocs), nil
 }
 
+// Search performs a search query on the index and returns the search results.
+//
+// Parameters:
+//   - query (string): The search query string.
+//   - docsLimit (uintptr): The maximum number of documents to return.
+//   - withHighlights (bool): Whether to include highlights in the results.
+//   - fieldNames (...string): The names of the fields to be included in the search.
+//
+// Returns:
+//   - *SearchResult: A pointer to the SearchResult containing the search results.
+//   - error: An error if the search fails.
 func (i *Index) Search(query string, docsLimit uintptr, withHighlights bool, fieldNames ...string) (*SearchResult, error) {
 	if len(fieldNames) == 0 {
 		return nil, fmt.Errorf("fieldNames must not be empty")
@@ -101,6 +141,16 @@ func (i *Index) Free() {
 	C.index_free(i.ptr)
 }
 
+// RegisterTextAnalyzerNgram registers a text analyzer using N-grams with the index.
+//
+// Parameters:
+//   - tokenizerName (string): The name of the tokenizer to be used.
+//   - minGram (uintptr): The minimum length of the n-grams.
+//   - maxGram (uintptr): The maximum length of the n-grams.
+//   - prefixOnly (bool): Whether to generate only prefix n-grams.
+//
+// Returns:
+//   - error: An error if the registration fails.
 func (i *Index) RegisterTextAnalyzerNgram(tokenizerName string, minGram, maxGram uintptr, prefixOnly bool) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
@@ -110,6 +160,16 @@ func (i *Index) RegisterTextAnalyzerNgram(tokenizerName string, minGram, maxGram
 	return tryExtractError(errBuffer)
 }
 
+// RegisterTextAnalyzerEdgeNgram registers a text analyzer using edge n-grams with the index.
+//
+// Parameters:
+//   - tokenizerName (string): The name of the tokenizer to be used.
+//   - minGram (uintptr): The minimum length of the edge n-grams.
+//   - maxGram (uintptr): The maximum length of the edge n-grams.
+//   - limit (uintptr): The maximum number of edge n-grams to generate.
+//
+// Returns:
+//   - error: An error if the registration fails.
 func (i *Index) RegisterTextAnalyzerEdgeNgram(tokenizerName string, minGram, maxGram uintptr, limit uintptr) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
@@ -118,6 +178,15 @@ func (i *Index) RegisterTextAnalyzerEdgeNgram(tokenizerName string, minGram, max
 	return tryExtractError(errBuffer)
 }
 
+// RegisterTextAnalyzerSimple registers a simple text analyzer with the index.
+//
+// Parameters:
+//   - tokenizerName (string): The name of the tokenizer to be used.
+//   - textLimit (uintptr): The limit on the length of the text to be analyzed.
+//   - lang (string): The language code for the text analyzer.
+//
+// Returns:
+//   - error: An error if the registration fails.
 func (i *Index) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintptr, lang string) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
@@ -129,6 +198,13 @@ func (i *Index) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintp
 	return tryExtractError(errBuffer)
 }
 
+// RegisterTextAnalyzerRaw registers a raw text analyzer with the index.
+//
+// Parameters:
+//   - tokenizerName (string): The name of the raw tokenizer to be used.
+//
+// Returns:
+//   - error: An error if the registration fails.
 func (i *Index) RegisterTextAnalyzerRaw(tokenizerName string) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
@@ -138,6 +214,16 @@ func (i *Index) RegisterTextAnalyzerRaw(tokenizerName string) error {
 	return tryExtractError(errBuffer)
 }
 
+// GetSearchResults extracts search results from a SearchResult and converts them into a slice of models.
+//
+// Parameters:
+//   - searchResult (*SearchResult): The search results to process.
+//   - schema (*Schema): The schema to use for converting documents to models.
+//   - f (func(json string) (T, error)): A function to convert JSON strings to models.
+//   - includeFields (...string): Optional list of fields to include in the result.
+//
+// Returns:
+//   - ([]T, error): A slice of models obtained from the search results, and an error if something goes wrong.
 func GetSearchResults[T any](
 	searchResult *SearchResult,
 	schema *Schema,
