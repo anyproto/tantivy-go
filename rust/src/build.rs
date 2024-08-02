@@ -5,7 +5,7 @@ use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 
-const FILE_PATH: &str = "../tantivy/bindings.h";
+const FILE_PATH: &str = "../bindings.h";
 
 fn add_typedefs() -> io::Result<()> {
 
