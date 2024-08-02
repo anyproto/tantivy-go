@@ -14,8 +14,8 @@ go get github.com/anyproto/tantivy-go
 Ensure your libraries are in your `ld` path.
 
 ### Example Run
-- `make download-tantivy-all`
-- Run `main.go` in the `go` folder
+- Run `make download-tantivy-all` inside the `rust` folder
+- Run `main.go` in the `example` folder
 
 ## Development
 Development and compilation are done on MacBooks and for Apple platforms. Therefore, the development steps provided are for macOS.
@@ -27,7 +27,8 @@ Development and compilation are done on MacBooks and for Apple platforms. Theref
 - Install Windows compiler:  `brew install mingw-w64`
 - Install musl: `brew tap messense/macos-cross-toolchains && brew install x86_64-unknown-linux-musl`
 
-### Install 
+### Install rust libraries
+Run inside the `rust` folder:
 `make install-all` - install release versions for all platforms
 `make install-debug-all` - install debug versions for all platforms
 `make install-ARCH-GOOS` - install release version for ARCH GOOS
