@@ -29,9 +29,13 @@ Development and compilation are done on MacBooks and for Apple platforms. Theref
 
 ### Install rust libraries
 Run inside the `rust` folder:
+
 `make install-all` - install release versions for all platforms
+
 `make install-debug-all` - install debug versions for all platforms
+
 `make install-ARCH-GOOS` - install release version for ARCH GOOS
+
 `make install-debug-ARCH-GOOS` - install debug version for ARCH GOOS
 
 ### GCC support
