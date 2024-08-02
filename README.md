@@ -3,7 +3,7 @@
 This project provides Go bindings for the [Tantivy](https://github.com/quickwit-oss/tantivy) search engine library. Tantivy is a full-text search engine library written in Rust, and this project aims to make its powerful search capabilities available to Go developers.
 
 ## Disclaimer
-Do not use in production.
+This project is still in development and might not be ready for production use. The API is subject to change, and the project may contain bugs. Please use with caution.
 
 ## Installation
 
