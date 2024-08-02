@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anyproto/tantivy-go/tantivy"
+	"github.com/anyproto/tantivy-go"
 )
 
 const NameBody = "body"
@@ -13,9 +13,9 @@ const NameTitle = "title"
 
 func main() {
 	// Initialize the library
-	tantivy.LibInit("debug")
+	tantivy_go.LibInit("debug")
 	// Create schema builder
-	builder, err := tantivy.NewSchemaBuilder()
+	builder, err := tantivy_go.NewSchemaBuilder()
 	if err != nil {
 		fmt.Println("Failed to create schema builder:", err)
 		return
@@ -27,8 +27,8 @@ func main() {
 		true,
 		true,
 		false,
-		tantivy.IndexRecordOptionWithFreqsAndPositions,
-		tantivy.TokenizerEdgeNgram,
+		tantivy_go.IndexRecordOptionWithFreqsAndPositions,
+		tantivy_go.TokenizerEdgeNgram,
 	)
 
 	if err != nil {
@@ -41,8 +41,8 @@ func main() {
 		true,
 		false,
 		false,
-		tantivy.IndexRecordOptionBasic,
-		tantivy.TokenizerRaw,
+		tantivy_go.IndexRecordOptionBasic,
+		tantivy_go.TokenizerRaw,
 	)
 
 	if err != nil {
@@ -55,8 +55,8 @@ func main() {
 		true,
 		true,
 		false,
-		tantivy.IndexRecordOptionWithFreqsAndPositions,
-		tantivy.TokenizerSimple,
+		tantivy_go.IndexRecordOptionWithFreqsAndPositions,
+		tantivy_go.TokenizerSimple,
 	)
 
 	if err != nil {
@@ -72,33 +72,33 @@ func main() {
 	}
 	// Create index with schema
 	_ = os.RemoveAll("index_dir")
-	index, err := tantivy.NewIndexWithSchema("index_dir", schema)
+	index, err := tantivy_go.NewIndexWithSchema("index_dir", schema)
 	if err != nil {
 		fmt.Println("Failed to create index:", err)
 		return
 	}
 	defer index.Free()
 
-	err = index.RegisterTextAnalyzerSimple(tantivy.TokenizerSimple, 40, tantivy.English)
+	err = index.RegisterTextAnalyzerSimple(tantivy_go.TokenizerSimple, 40, tantivy_go.English)
 	if err != nil {
 		fmt.Println("Failed to register text analyzer:", err)
 		return
 	}
 
-	err = index.RegisterTextAnalyzerEdgeNgram(tantivy.TokenizerEdgeNgram, 2, 4, 100)
+	err = index.RegisterTextAnalyzerEdgeNgram(tantivy_go.TokenizerEdgeNgram, 2, 4, 100)
 	if err != nil {
 		fmt.Println("Failed to register text analyzer:", err)
 		return
 	}
 
-	err = index.RegisterTextAnalyzerRaw(tantivy.TokenizerRaw)
+	err = index.RegisterTextAnalyzerRaw(tantivy_go.TokenizerRaw)
 	if err != nil {
 		fmt.Println("Failed to register text analyzer:", err)
 		return
 	}
 
 	// Create document
-	doc := tantivy.NewDocument()
+	doc := tantivy_go.NewDocument()
 	if doc == nil {
 		fmt.Println("Failed to create document")
 		return

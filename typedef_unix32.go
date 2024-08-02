@@ -1,6 +1,6 @@
 //go:build arm || 386
 
-package tantivy
+package tantivy_go
 
 import "C"
 

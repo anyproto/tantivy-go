@@ -1,6 +1,6 @@
 //go:build (amd64 || arm64) && unix
 
-package tantivy
+package tantivy_go
 
 import "C"
 

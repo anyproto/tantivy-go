@@ -1,6 +1,6 @@
 //go:build windows
 
-package tantivy
+package tantivy_go
 
 import "C"
 

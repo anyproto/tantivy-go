@@ -1,4 +1,4 @@
-package tantivy_test
+package tantivy_go_test
 
 import (
 	"encoding/base64"
@@ -6,10 +6,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/anyproto/tantivy-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/anyproto/tantivy-go/tantivy"
 )
 
 const NameBody = "body"
@@ -55,7 +54,7 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		require.Equal(t, 1, int(size))
 
-		results, err := tantivy.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
 			var doc DocSample
 			return doc, json.Unmarshal([]byte(jsonStr), &doc)
 		}, NameId, NameTitle, NameBody)
@@ -245,7 +244,7 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		require.Equal(t, 1, int(size))
 
-		results, err := tantivy.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
 			var doc DocSample
 			return doc, json.Unmarshal([]byte(jsonStr), &doc)
 		}, NameId, NameTitle, NameBody)
@@ -288,9 +287,9 @@ func addDoc(
 	title string,
 	name string,
 	id string,
-	index *tantivy.Index,
-) (*tantivy.Document, error) {
-	doc := tantivy.NewDocument()
+	index *tantivy_go.Index,
+) (*tantivy_go.Document, error) {
+	doc := tantivy_go.NewDocument()
 
 	err := doc.AddField(NameTitle, title, index)
 	require.NoError(t, err)
@@ -307,10 +306,10 @@ func fx(
 	limit uintptr,
 	minGram uintptr,
 	isFastId bool,
-) (*tantivy.Schema, *tantivy.Index) {
-	err := tantivy.LibInit("release")
+) (*tantivy_go.Schema, *tantivy_go.Index) {
+	err := tantivy_go.LibInit("release")
 	assert.NoError(t, err)
-	builder, err := tantivy.NewSchemaBuilder()
+	builder, err := tantivy_go.NewSchemaBuilder()
 	require.NoError(t, err)
 
 	err = builder.AddTextField(
@@ -318,8 +317,8 @@ func fx(
 		true,
 		true,
 		false,
-		tantivy.IndexRecordOptionWithFreqsAndPositions,
-		tantivy.TokenizerEdgeNgram,
+		tantivy_go.IndexRecordOptionWithFreqsAndPositions,
+		tantivy_go.TokenizerEdgeNgram,
 	)
 	require.NoError(t, err)
 
@@ -328,8 +327,8 @@ func fx(
 		true,
 		false,
 		isFastId,
-		tantivy.IndexRecordOptionBasic,
-		tantivy.TokenizerRaw,
+		tantivy_go.IndexRecordOptionBasic,
+		tantivy_go.TokenizerRaw,
 	)
 	require.NoError(t, err)
 
@@ -338,8 +337,8 @@ func fx(
 		true,
 		true,
 		false,
-		tantivy.IndexRecordOptionWithFreqsAndPositions,
-		tantivy.TokenizerSimple,
+		tantivy_go.IndexRecordOptionWithFreqsAndPositions,
+		tantivy_go.TokenizerSimple,
 	)
 	require.NoError(t, err)
 
@@ -347,16 +346,16 @@ func fx(
 	require.NoError(t, err)
 
 	os.RemoveAll("index_dir")
-	index, err := tantivy.NewIndexWithSchema("index_dir", schema)
+	index, err := tantivy_go.NewIndexWithSchema("index_dir", schema)
 	require.NoError(t, err)
 
-	err = index.RegisterTextAnalyzerSimple(tantivy.TokenizerSimple, limit, tantivy.English)
+	err = index.RegisterTextAnalyzerSimple(tantivy_go.TokenizerSimple, limit, tantivy_go.English)
 	require.NoError(t, err)
 
-	err = index.RegisterTextAnalyzerEdgeNgram(tantivy.TokenizerEdgeNgram, minGram, 4, 100)
+	err = index.RegisterTextAnalyzerEdgeNgram(tantivy_go.TokenizerEdgeNgram, minGram, 4, 100)
 	require.NoError(t, err)
 
-	err = index.RegisterTextAnalyzerRaw(tantivy.TokenizerRaw)
+	err = index.RegisterTextAnalyzerRaw(tantivy_go.TokenizerRaw)
 	require.NoError(t, err)
 	return schema, index
 }

@@ -1,4 +1,4 @@
-package tantivy
+package tantivy_go
 
 //#include "bindings.h"
 import "C"
