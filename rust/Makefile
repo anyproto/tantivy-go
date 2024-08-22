@@ -8,6 +8,7 @@ setup:
 	@rustup target add aarch64-linux-android
 	@rustup target add x86_64-linux-android
 	@rustup target add aarch64-apple-ios
+	@rustup target add aarch64-apple-ios-sim
 	@rustup target add x86_64-apple-ios
 	@rustup target add x86_64-apple-darwin
 	@rustup target add x86_64-apple-darwin
@@ -97,6 +98,20 @@ install-debug-ios-arm64: build-debug-ios-arm64
 	@mkdir -p ../libs/ios-arm64
 	@cp target/aarch64-apple-ios/debug/libtantivy_go.a ../libs/ios-arm64
 
+build-ios-arm64-sim:
+	cargo build --release --target aarch64-apple-ios-sim
+
+install-ios-arm64-sim: build-ios-arm64-sim
+	@mkdir -p ../libs/ios-arm64-sim
+	@cp target/aarch64-apple-ios-sim/release/libtantivy_go.a ../libs/ios-arm64-sim
+
+build-debug-ios-arm64-sim:
+	cargo build --target aarch64-apple-ios-sim
+
+install-debug-ios-arm64-sim: build-debug-ios-arm64-sim
+	@mkdir -p ../libs/ios-arm64-sim
+	@cp target/aarch64-apple-ios-sim/debug/libtantivy_go.a ../libs/ios-arm64-sim
+
 build-ios-amd64:
 	cargo build --release --target x86_64-apple-ios
 
@@ -160,6 +175,7 @@ install-all: \
     install-android-arm64 \
     install-android-amd64 \
     install-ios-arm64 \
+    install-ios-arm64-sim \
     install-ios-amd64 \
     install-darwin-amd64 \
     install-darwin-arm64 \
@@ -172,6 +188,7 @@ install-debug-all: \
     install-debug-android-arm64 \
     install-debug-android-amd64 \
     install-debug-ios-arm64 \
+    install-debug-ios-arm64-sim \
     install-debug-ios-amd64 \
     install-debug-darwin-amd64 \
     install-debug-darwin-arm64 \
@@ -190,6 +207,7 @@ TANTIVY_LIBS := android-386.tar.gz \
          darwin-arm64.tar.gz \
          ios-amd64.tar.gz \
          ios-arm64.tar.gz \
+         ios-arm64-sim.tar.gz \
          linux-amd64-musl.tar.gz \
          windows-amd64.tar.gz
 
