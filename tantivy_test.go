@@ -6,9 +6,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/anyproto/tantivy-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/anyproto/tantivy-go"
 )
 
 const NameBody = "body"
@@ -197,6 +198,50 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		docs, err = index.NumDocs()
 		require.Equal(t, uint64(0), docs)
+	})
+
+	t.Run("docs search - when ascii folding", func(t *testing.T) {
+		_, index := fx(t, limit, 1, false)
+
+		defer index.Free()
+
+		doc, err := addDoc(t, "Idées fête", "mères straße", "1", index)
+		require.NoError(t, err)
+
+		err = index.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		docs, err := index.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), docs)
+
+		result, err := index.Search("Idées fête", 100, true, NameTitle)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		defer result.Free()
+		require.Equal(t, 1, int(size))
+
+		result2, err := index.Search("idees fete", 100, true, NameTitle)
+		require.NoError(t, err)
+
+		size2, err := result2.GetSize()
+		defer result2.Free()
+		require.Equal(t, 1, int(size2))
+
+		result3, err := index.Search("straße", 100, true, NameBody)
+		require.NoError(t, err)
+
+		size3, err := result3.GetSize()
+		defer result3.Free()
+		require.Equal(t, 1, int(size3))
+
+		result4, err := index.Search("strasse", 100, true, NameBody)
+		require.NoError(t, err)
+
+		size4, err := result4.GetSize()
+		defer result4.Free()
+		require.Equal(t, 1, int(size4))
 	})
 
 	t.Run("docs search and remove - when fast", func(t *testing.T) {

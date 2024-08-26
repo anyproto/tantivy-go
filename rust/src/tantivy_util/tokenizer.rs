@@ -1,5 +1,5 @@
 use tantivy::{Index, TantivyError};
-use tantivy::tokenizer::{LowerCaser, NgramTokenizer, RawTokenizer, RemoveLongFilter, SimpleTokenizer, TextAnalyzer};
+use tantivy::tokenizer::{AsciiFoldingFilter, LowerCaser, NgramTokenizer, RawTokenizer, RemoveLongFilter, SimpleTokenizer, TextAnalyzer};
 use crate::tantivy_util::{EdgeNgramTokenizer};
 use crate::tantivy_util::stemmer::create_stemmer;
 
@@ -21,6 +21,7 @@ pub fn register_edge_ngram_tokenizer(
             limit
         ))
         .filter(LowerCaser)
+        .filter(AsciiFoldingFilter)
         .build();
 
     register_tokenizer(index, tokenizer_name, text_analyzer);
@@ -35,6 +36,7 @@ pub fn register_simple_tokenizer(
     let text_analyzer = TextAnalyzer::builder(SimpleTokenizer::default())
         .filter(RemoveLongFilter::limit(text_limit))
         .filter(LowerCaser)
+        .filter(AsciiFoldingFilter)
         .filter(create_stemmer(lang))
         .build();
 
@@ -62,6 +64,7 @@ pub fn register_ngram_tokenizer(
 
     let text_analyzer = TextAnalyzer::builder(tokenizer)
         .filter(LowerCaser)
+        .filter(AsciiFoldingFilter)
         .build();
 
     register_tokenizer(index, tokenizer_name, text_analyzer);
