@@ -1,5 +1,27 @@
 use serde::Serialize;
-use tantivy::TantivyDocument;
+use tantivy::{Index, IndexReader, IndexWriter, TantivyDocument};
+
+
+pub struct TantivyContext {
+    pub index: Index,
+    pub writer: IndexWriter,
+    reader: IndexReader,
+}
+
+impl TantivyContext {
+    pub fn new(index: Index, writer: IndexWriter, reader: IndexReader) -> TantivyContext {
+        TantivyContext {
+            index,
+            writer,
+            reader
+        }
+    }
+
+    pub fn reader(&mut self) -> &IndexReader {
+        let _ = self.reader.reload();
+        return &self.reader;
+    }
+}
 
 #[derive(Clone)]
 pub struct Document {

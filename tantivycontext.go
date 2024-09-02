@@ -8,27 +8,27 @@ import (
 	"unsafe"
 )
 
-type Index struct{ ptr *C.Index }
+type TantivyContext struct{ ptr *C.TantivyContext }
 
-// NewIndexWithSchema creates a new instance of Index with the provided schema.
+// NewTantivyContextWithSchema creates a new instance of TantivyContext with the provided schema.
 //
 // Parameters:
 //   - path: The path to the index as a string.
 //   - schema: A pointer to the Schema to be used.
 //
 // Returns:
-//   - *Index: A pointer to a newly created Index instance.
+//   - *TantivyContext: A pointer to a newly created TantivyContext instance.
 //   - error: An error if the index creation fails.
-func NewIndexWithSchema(path string, schema *Schema) (*Index, error) {
+func NewTantivyContextWithSchema(path string, schema *Schema) (*TantivyContext, error) {
 	cPath := C.CString(path)
 	defer C.string_free(cPath)
 	var errBuffer *C.char
-	ptr := C.index_create_with_schema(cPath, schema.ptr, &errBuffer)
+	ptr := C.context_create_with_schema(cPath, schema.ptr, &errBuffer)
 	if ptr == nil {
 		defer C.string_free(errBuffer)
 		return nil, errors.New(C.GoString(errBuffer))
 	}
-	return &Index{ptr: ptr}, nil
+	return &TantivyContext{ptr: ptr}, nil
 }
 
 // AddAndConsumeDocuments adds and consumes the provided documents to the index.
@@ -38,7 +38,7 @@ func NewIndexWithSchema(path string, schema *Schema) (*Index, error) {
 //
 // Returns:
 //   - error: An error if adding and consuming the documents fails.
-func (i *Index) AddAndConsumeDocuments(docs ...*Document) error {
+func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
 	if len(docs) == 0 {
 		return nil
 	}
@@ -47,7 +47,7 @@ func (i *Index) AddAndConsumeDocuments(docs ...*Document) error {
 	for j, doc := range docs {
 		docsPtr[j] = doc.ptr
 	}
-	C.index_add_and_consume_documents(i.ptr, &docsPtr[0], C.uintptr_t(len(docs)), &errBuffer)
+	C.context_add_and_consume_documents(tc.ptr, &docsPtr[0], C.uintptr_t(len(docs)), &errBuffer)
 	return tryExtractError(errBuffer)
 }
 
@@ -59,7 +59,7 @@ func (i *Index) AddAndConsumeDocuments(docs ...*Document) error {
 //
 // Returns:
 //   - error: An error if deleting the documents fails.
-func (i *Index) DeleteDocuments(field string, deleteIds ...string) error {
+func (tc *TantivyContext) DeleteDocuments(field string, deleteIds ...string) error {
 	if len(deleteIds) == 0 {
 		return nil
 	}
@@ -75,7 +75,7 @@ func (i *Index) DeleteDocuments(field string, deleteIds ...string) error {
 	cDeleteIds := (**C.char)(unsafe.Pointer(&deleteIDsPtr[0]))
 
 	var errBuffer *C.char
-	C.index_delete_documents(i.ptr, cField, cDeleteIds, C.uintptr_t(len(deleteIds)), &errBuffer)
+	C.context_delete_documents(tc.ptr, cField, cDeleteIds, C.uintptr_t(len(deleteIds)), &errBuffer)
 	return tryExtractError(errBuffer)
 }
 
@@ -84,9 +84,9 @@ func (i *Index) DeleteDocuments(field string, deleteIds ...string) error {
 // Returns:
 //   - uint64: The number of documents.
 //   - error: An error if retrieving the document count fails.
-func (i *Index) NumDocs() (uint64, error) {
+func (tc *TantivyContext) NumDocs() (uint64, error) {
 	var errBuffer *C.char
-	numDocs := C.index_num_docs(i.ptr, &errBuffer)
+	numDocs := C.context_num_docs(tc.ptr, &errBuffer)
 	if errBuffer != nil {
 		defer C.string_free(errBuffer)
 		return 0, errors.New(C.GoString(errBuffer))
@@ -105,7 +105,7 @@ func (i *Index) NumDocs() (uint64, error) {
 // Returns:
 //   - *SearchResult: A pointer to the SearchResult containing the search results.
 //   - error: An error if the search fails.
-func (i *Index) Search(query string, docsLimit uintptr, withHighlights bool, fieldNames ...string) (*SearchResult, error) {
+func (tc *TantivyContext) Search(query string, docsLimit uintptr, withHighlights bool, fieldNames ...string) (*SearchResult, error) {
 	if len(fieldNames) == 0 {
 		return nil, fmt.Errorf("fieldNames must not be empty")
 	}
@@ -120,8 +120,8 @@ func (i *Index) Search(query string, docsLimit uintptr, withHighlights bool, fie
 	}
 
 	var errBuffer *C.char
-	ptr := C.index_search(
-		i.ptr,
+	ptr := C.context_search(
+		tc.ptr,
 		(**C.char)(unsafe.Pointer(&fieldNamesPtr[0])),
 		C.uintptr_t(len(fieldNames)),
 		cQuery,
@@ -137,8 +137,8 @@ func (i *Index) Search(query string, docsLimit uintptr, withHighlights bool, fie
 	return &SearchResult{ptr: ptr}, nil
 }
 
-func (i *Index) Free() {
-	C.index_free(i.ptr)
+func (tc *TantivyContext) Free() {
+	C.context_free(tc.ptr)
 }
 
 // RegisterTextAnalyzerNgram registers a text analyzer using N-grams with the index.
@@ -151,11 +151,11 @@ func (i *Index) Free() {
 //
 // Returns:
 //   - error: An error if the registration fails.
-func (i *Index) RegisterTextAnalyzerNgram(tokenizerName string, minGram, maxGram uintptr, prefixOnly bool) error {
+func (tc *TantivyContext) RegisterTextAnalyzerNgram(tokenizerName string, minGram, maxGram uintptr, prefixOnly bool) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
 	var errBuffer *C.char
-	C.index_register_text_analyzer_ngram(i.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.bool(prefixOnly), &errBuffer)
+	C.context_register_text_analyzer_ngram(tc.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.bool(prefixOnly), &errBuffer)
 
 	return tryExtractError(errBuffer)
 }
@@ -170,11 +170,11 @@ func (i *Index) RegisterTextAnalyzerNgram(tokenizerName string, minGram, maxGram
 //
 // Returns:
 //   - error: An error if the registration fails.
-func (i *Index) RegisterTextAnalyzerEdgeNgram(tokenizerName string, minGram, maxGram uintptr, limit uintptr) error {
+func (tc *TantivyContext) RegisterTextAnalyzerEdgeNgram(tokenizerName string, minGram, maxGram uintptr, limit uintptr) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
 	var errBuffer *C.char
-	C.index_register_text_analyzer_edge_ngram(i.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.uintptr_t(limit), &errBuffer)
+	C.context_register_text_analyzer_edge_ngram(tc.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.uintptr_t(limit), &errBuffer)
 	return tryExtractError(errBuffer)
 }
 
@@ -187,13 +187,13 @@ func (i *Index) RegisterTextAnalyzerEdgeNgram(tokenizerName string, minGram, max
 //
 // Returns:
 //   - error: An error if the registration fails.
-func (i *Index) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintptr, lang string) error {
+func (tc *TantivyContext) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintptr, lang string) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
 	cLang := C.CString(lang)
 	defer C.string_free(cLang)
 	var errBuffer *C.char
-	C.index_register_text_analyzer_simple(i.ptr, cTokenizerName, C.uintptr_t(textLimit), cLang, &errBuffer)
+	C.context_register_text_analyzer_simple(tc.ptr, cTokenizerName, C.uintptr_t(textLimit), cLang, &errBuffer)
 
 	return tryExtractError(errBuffer)
 }
@@ -205,11 +205,11 @@ func (i *Index) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintp
 //
 // Returns:
 //   - error: An error if the registration fails.
-func (i *Index) RegisterTextAnalyzerRaw(tokenizerName string) error {
+func (tc *TantivyContext) RegisterTextAnalyzerRaw(tokenizerName string) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
 	var errBuffer *C.char
-	C.index_register_text_analyzer_raw(i.ptr, cTokenizerName, &errBuffer)
+	C.context_register_text_analyzer_raw(tc.ptr, cTokenizerName, &errBuffer)
 
 	return tryExtractError(errBuffer)
 }

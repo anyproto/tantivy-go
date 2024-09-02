@@ -10,6 +10,7 @@ mod document;
 
 pub use self::edge_ngram_tokenizer::EdgeNgramTokenizer;
 pub use self::models::Document;
+pub use self::models::TantivyContext;
 pub use self::models::Fragment;
 pub use self::models::Highlight;
 pub use self::models::SearchResult;

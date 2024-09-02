@@ -28,13 +28,13 @@ func NewDocument() *Document {
 //
 // Returns:
 //   - error: an error if adding the field fails, or nil if the operation is successful
-func (d *Document) AddField(fieldName, fieldValue string, index *Index) error {
+func (d *Document) AddField(fieldName, fieldValue string, tc *TantivyContext) error {
 	cFieldName := C.CString(fieldName)
 	defer C.string_free(cFieldName)
 	cFieldValue := C.CString(fieldValue)
 	defer C.string_free(cFieldValue)
 	var errBuffer *C.char
-	C.document_add_field(d.ptr, cFieldName, cFieldValue, index.ptr, &errBuffer)
+	C.document_add_field(d.ptr, cFieldName, cFieldValue, tc.ptr, &errBuffer)
 
 	return tryExtractError(errBuffer)
 }

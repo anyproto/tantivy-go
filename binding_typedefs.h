@@ -1,4 +1,4 @@
-typedef struct Index Index;
+typedef struct TantivyContext TantivyContext;
 typedef struct SchemaBuilder SchemaBuilder;
 typedef struct Document Document;
 typedef struct SearchResult SearchResult;

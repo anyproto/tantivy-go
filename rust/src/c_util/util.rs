@@ -3,15 +3,14 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::path::Path;
-
 use log::debug;
 use serde_json::json;
-use tantivy::{Index, IndexWriter, TantivyDocument, Term};
+use tantivy::{Index, IndexWriter, TantivyDocument, TantivyError, Term};
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{QueryParser};
 use tantivy::schema::{Field, Schema};
 
-use crate::tantivy_util::{convert_document_to_json, Document, DOCUMENT_BUDGET_BYTES, find_highlights, get_string_field_entry, SearchResult};
+use crate::tantivy_util::{convert_document_to_json, Document, TantivyContext, DOCUMENT_BUDGET_BYTES, find_highlights, get_string_field_entry, SearchResult};
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {
@@ -159,7 +158,7 @@ pub fn start_lib_init(log_level: &str) {
     ).try_init();
 }
 
-pub fn create_index_with_schema(error_buffer: *mut *mut c_char, schema: Schema, path: &str) -> Result<*mut Index, ()> {
+pub fn create_context_with_schema(error_buffer: *mut *mut c_char, schema: Schema, path: &str) -> Result<*mut TantivyContext, ()> {
     match fs::create_dir_all(Path::new(path)) {
         Err(e) => {
             debug!("Failed to create directories: {}", e);
@@ -177,8 +176,8 @@ pub fn create_index_with_schema(error_buffer: *mut *mut c_char, schema: Schema, 
         }
     };
 
-    Ok(match Index::open_or_create(dir, schema) {
-        Ok(index) => Box::into_raw(Box::new(index)),
+    Ok(match create_tantivy_context(dir, schema) {
+        Ok(ctx) => Box::into_raw(Box::new(ctx)),
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
             return Err(());
@@ -186,21 +185,32 @@ pub fn create_index_with_schema(error_buffer: *mut *mut c_char, schema: Schema, 
     })
 }
 
+fn create_tantivy_context(dir: MmapDirectory, schema: Schema) -> Result<TantivyContext, TantivyError> {
+    let index = Index::open_or_create(dir, schema)?;
+    let writer = index.writer(DOCUMENT_BUDGET_BYTES)?;
+    let reader = index.reader()?;
+    return Ok(TantivyContext::new(
+        index,
+        writer,
+        reader,
+    ));
+}
+
 pub fn add_and_consume_documents(
     docs_ptr: *mut *mut Document,
     docs_len: usize,
     error_buffer: *mut *mut c_char,
-    mut index_writer: IndexWriter,
+    writer: &mut IndexWriter,
 ) {
     if process_type_slice(docs_ptr, error_buffer, docs_len, |doc| {
         let doc = *box_from(doc);
-        let _ = index_writer.add_document(doc.tantivy_doc);
+        let _ = writer.add_document(doc.tantivy_doc);
         Ok(())
     }).is_err() {
         return;
     }
 
-    if index_writer.commit().is_err() {
+    if writer.commit().is_err() {
         set_error("Failed to commit document", error_buffer)
     }
 }
@@ -209,15 +219,10 @@ pub fn delete_docs(
     delete_ids_ptr: *mut *const c_char,
     delete_ids_len: usize,
     error_buffer: *mut *mut c_char,
-    index: &mut Index,
+    context: &mut TantivyContext,
     field_name: &str,
 ) {
-    let mut index_writer: IndexWriter<TantivyDocument> = match index.writer(DOCUMENT_BUDGET_BYTES) {
-        Ok(writer) => writer,
-        Err(_) => return
-    };
-
-    let schema = index.schema();
+    let schema = context.index.schema();
 
     let field = match schema_apply_for_field::<Field, (), _>
         (error_buffer, schema.clone(), field_name, |field, _| {
@@ -231,13 +236,13 @@ pub fn delete_docs(
     };
 
     if process_string_slice(delete_ids_ptr, error_buffer, delete_ids_len, |id_value| {
-        let _ = index_writer.delete_term(Term::from_field_text(field, id_value));
+        let _ = context.writer.delete_term(Term::from_field_text(field, id_value));
         Ok(())
     }).is_err() {
         return;
     }
 
-    if index_writer.commit().is_err() {
+    if context.writer.commit().is_err() {
         set_error("Failed to commit removing", error_buffer)
     }
 }
@@ -259,7 +264,7 @@ pub fn get_doc<'a>(
 pub fn add_field(
     error_buffer: *mut *mut c_char,
     doc: &mut Document,
-    index: &mut Index,
+    index: &Index,
     field_name: &str,
     field_value: &str,
 ) {
@@ -281,19 +286,11 @@ pub fn search(
     query_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
     docs_limit: usize,
-    index: &mut Index,
+    context: &mut TantivyContext,
     with_highlights: bool,
 ) -> Result<*mut SearchResult, ()> {
-    let reader = match index.reader() {
-        Ok(reader) => reader,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return Err(());
-        }
-    };
-
-    let searcher = reader.searcher();
-    let schema = index.schema();
+    let searcher = &context.reader().searcher();
+    let schema = context.index.schema();
 
     let mut fields = Vec::with_capacity(field_names_len);
 
@@ -312,7 +309,7 @@ pub fn search(
         None => return Err(())
     };
 
-    let query_parser = QueryParser::for_index(index, fields);
+    let query_parser = QueryParser::for_index(&context.index, fields);
 
     let query = match query_parser.parse_query(query) {
         Ok(query) => query,

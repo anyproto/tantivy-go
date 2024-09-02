@@ -2,10 +2,10 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
 use logcall::logcall;
-use tantivy::{Index, schema::*};
+use tantivy::{schema::*};
 
-use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_string, box_from, convert_document_as_json, create_index_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
-use crate::tantivy_util::{add_text_field, Document, DOCUMENT_BUDGET_BYTES, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, SearchResult};
+use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
+use crate::tantivy_util::{add_text_field, Document, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, SearchResult, TantivyContext};
 
 mod tantivy_util;
 mod c_util;
@@ -69,11 +69,11 @@ pub extern "C" fn schema_builder_build(
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_create_with_schema(
+pub extern "C" fn context_create_with_schema(
     path_ptr: *const c_char,
     schema_ptr: *mut Schema,
     error_buffer: *mut *mut c_char,
-) -> *mut Index {
+) -> *mut TantivyContext {
     let schema = match assert_pointer(schema_ptr, error_buffer) {
         Some(value) => value.clone(),
         None => return ptr::null_mut(),
@@ -84,7 +84,7 @@ pub extern "C" fn index_create_with_schema(
         None => return ptr::null_mut(),
     };
 
-    match create_index_with_schema(error_buffer, schema, path) {
+    match create_context_with_schema(error_buffer, schema, path) {
         Ok(value) => value,
         Err(_) => return ptr::null_mut()
     }
@@ -92,15 +92,15 @@ pub extern "C" fn index_create_with_schema(
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_register_text_analyzer_ngram(
-    index_ptr: *mut Index,
+pub extern "C" fn context_register_text_analyzer_ngram(
+    context_ptr: *mut TantivyContext,
     tokenizer_name_ptr: *const c_char,
     min_gram: usize,
     max_gram: usize,
     prefix_only: bool,
     error_buffer: *mut *mut c_char,
 ) {
-    let index = match assert_pointer(index_ptr, error_buffer) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -110,7 +110,7 @@ pub extern "C" fn index_register_text_analyzer_ngram(
         None => return
     };
 
-    match register_ngram_tokenizer(min_gram, max_gram, prefix_only, index, tokenizer_name) {
+    match register_ngram_tokenizer(min_gram, max_gram, prefix_only, &context.index, tokenizer_name) {
         Err(err) => return set_error(&err.to_string(), error_buffer),
         _ => return
     };
@@ -118,15 +118,15 @@ pub extern "C" fn index_register_text_analyzer_ngram(
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_register_text_analyzer_edge_ngram(
-    index_ptr: *mut Index,
+pub extern "C" fn context_register_text_analyzer_edge_ngram(
+    context_ptr: *mut TantivyContext,
     tokenizer_name_ptr: *const c_char,
     min_gram: usize,
     max_gram: usize,
     limit: usize,
     error_buffer: *mut *mut c_char,
 ) {
-    let index = match assert_pointer(index_ptr, error_buffer) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -136,19 +136,19 @@ pub extern "C" fn index_register_text_analyzer_edge_ngram(
         None => return
     };
 
-    register_edge_ngram_tokenizer(min_gram, max_gram, limit, index, tokenizer_name);
+    register_edge_ngram_tokenizer(min_gram, max_gram, limit, &context.index, tokenizer_name);
 }
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_register_text_analyzer_simple(
-    index_ptr: *mut Index,
+pub extern "C" fn context_register_text_analyzer_simple(
+    context_ptr: *mut TantivyContext,
     tokenizer_name_ptr: *const c_char,
     text_limit: usize,
     lang_str_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
 ) {
-    let index = match assert_pointer(index_ptr, error_buffer) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -163,17 +163,17 @@ pub extern "C" fn index_register_text_analyzer_simple(
         None => return
     };
 
-    register_simple_tokenizer(text_limit, index, tokenizer_name, lang);
+    register_simple_tokenizer(text_limit, &context.index, tokenizer_name, lang);
 }
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_register_text_analyzer_raw(
-    index_ptr: *mut Index,
+pub extern "C" fn context_register_text_analyzer_raw(
+    context_ptr: *mut TantivyContext,
     tokenizer_name_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
 ) {
-    let index = match assert_pointer(index_ptr, error_buffer) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -183,40 +183,35 @@ pub extern "C" fn index_register_text_analyzer_raw(
         None => return
     };
 
-    register_raw_tokenizer(index, tokenizer_name);
+    register_raw_tokenizer(&context.index, tokenizer_name);
 }
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_add_and_consume_documents(
-    index_ptr: *mut Index,
+pub extern "C" fn context_add_and_consume_documents(
+    context_ptr: *mut TantivyContext,
     docs_ptr: *mut *mut Document,
     docs_len: usize,
     error_buffer: *mut *mut c_char,
 ) {
-    let index = match assert_pointer(index_ptr, error_buffer) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    let index_writer = match index.writer(DOCUMENT_BUDGET_BYTES) {
-        Ok(writer) => writer,
-        Err(err) => return set_error(&err.to_string(), error_buffer)
-    };
-
-    add_and_consume_documents(docs_ptr, docs_len, error_buffer, index_writer);
+    add_and_consume_documents(docs_ptr, docs_len, error_buffer, &mut context.writer);
 }
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_delete_documents(
-    index_ptr: *mut Index,
+pub extern "C" fn context_delete_documents(
+    context_ptr: *mut TantivyContext,
     field_name_ptr: *const c_char,
     delete_ids_ptr: *mut *const c_char,
     delete_ids_len: usize,
     error_buffer: *mut *mut c_char,
 ) {
-    let index = match assert_pointer(index_ptr, error_buffer) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -226,33 +221,27 @@ pub extern "C" fn index_delete_documents(
         None => return
     };
 
-    delete_docs(delete_ids_ptr, delete_ids_len, error_buffer, index, field_name);
+    delete_docs(delete_ids_ptr, delete_ids_len, error_buffer, context, field_name);
 }
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_num_docs(
-    index_ptr: *mut Index,
+pub extern "C" fn context_num_docs(
+    context_ptr: *mut TantivyContext,
     error_buffer: *mut *mut c_char,
 ) -> u64 {
-    let index = match assert_pointer(index_ptr, error_buffer) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
         Some(value) => value,
         None => return 0,
     };
 
-    match index.reader() {
-        Ok(reader) => reader.searcher().num_docs(),
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return 0;
-        }
-    }
+    context.reader().searcher().num_docs()
 }
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_search(
-    index_ptr: *mut Index,
+pub extern "C" fn context_search(
+    context_ptr: *mut TantivyContext,
     field_names_ptr: *mut *const c_char,
     field_names_len: usize,
     query_ptr: *const c_char,
@@ -260,12 +249,12 @@ pub extern "C" fn index_search(
     docs_limit: usize,
     with_highlights: bool,
 ) -> *mut SearchResult {
-    let index = match assert_pointer(index_ptr, error_buffer) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
         Some(value) => value,
         None => return ptr::null_mut()
     };
 
-    match search(field_names_ptr, field_names_len, query_ptr, error_buffer, docs_limit, index, with_highlights) {
+    match search(field_names_ptr, field_names_len, query_ptr, error_buffer, docs_limit, context, with_highlights) {
         Ok(value) => value,
         Err(_) => return ptr::null_mut()
     }
@@ -274,8 +263,8 @@ pub extern "C" fn index_search(
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[logcall]
 #[no_mangle]
-pub extern "C" fn index_free(index_ptr: *mut Index) {
-    drop_any(index_ptr)
+pub extern "C" fn context_free(context_ptr: *mut TantivyContext) {
+    drop_any(context_ptr)
 }
 
 #[logcall]
@@ -331,7 +320,7 @@ pub extern "C" fn document_add_field(
     doc_ptr: *mut Document,
     field_name_ptr: *const c_char,
     field_value_ptr: *const c_char,
-    index_ptr: *mut Index,
+    context_ptr: *mut TantivyContext,
     error_buffer: *mut *mut c_char,
 ) {
     let doc = match assert_pointer(doc_ptr, error_buffer) {
@@ -339,7 +328,7 @@ pub extern "C" fn document_add_field(
         None => return
     };
 
-    let index = match assert_pointer(index_ptr, error_buffer) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -354,7 +343,7 @@ pub extern "C" fn document_add_field(
         None => return
     };
 
-    add_field(error_buffer, doc, index, field_name, field_value);
+    add_field(error_buffer, doc, &context.index, field_name, field_value);
 }
 
 #[logcall]

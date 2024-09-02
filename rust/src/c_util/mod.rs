@@ -8,7 +8,7 @@ pub use self::util::start_lib_init;
 pub use self::util::box_from;
 pub use self::util::add_and_consume_documents;
 pub use self::util::delete_docs;
-pub use self::util::create_index_with_schema;
+pub use self::util::create_context_with_schema;
 pub use self::util::search;
 pub use self::util::drop_any;
 pub use self::util::get_doc;

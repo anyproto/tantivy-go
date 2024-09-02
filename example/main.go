@@ -13,7 +13,11 @@ const NameTitle = "title"
 
 func main() {
 	// Initialize the library
-	tantivy_go.LibInit("debug")
+	err := tantivy_go.LibInit("debug")
+	if err != nil {
+		fmt.Println("Failed to initialize library:", err)
+		return
+	}
 	// Create schema builder
 	builder, err := tantivy_go.NewSchemaBuilder()
 	if err != nil {
@@ -72,7 +76,7 @@ func main() {
 	}
 	// Create index with schema
 	_ = os.RemoveAll("index_dir")
-	index, err := tantivy_go.NewIndexWithSchema("index_dir", schema)
+	index, err := tantivy_go.NewTantivyContextWithSchema("index_dir", schema)
 	if err != nil {
 		fmt.Println("Failed to create index:", err)
 		return
