@@ -197,7 +197,7 @@ install-debug-all: \
 
 ### Download release
 REPO := anyproto/tantivy-go
-VERSION := go/v0.0.3
+VERSION := v0.1.0
 OUTPUT_DIR := ../libs
 
 TANTIVY_LIBS := android-386.tar.gz \
