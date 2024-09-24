@@ -5,4 +5,3 @@ package tantivy_go
 import "C"
 
 type pointerCType = C.ulong
-type pointerGoType = uint64
