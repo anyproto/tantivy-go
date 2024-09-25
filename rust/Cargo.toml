@@ -1,6 +1,6 @@
 [package]
 name = "tantivy-go"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2021"
 build = "src/build.rs"
 
@@ -8,11 +8,11 @@ build = "src/build.rs"
 crate-type = ["staticlib"]
 
 [build-dependencies]
-cbindgen = "0.27.0"
+cbindgen = "0.26.0"
 
 [dependencies]
 tantivy = "0.22.0"
-cbindgen = "0.27.0"
+cbindgen = "0.26.0"
 log = "0.4.21"
 base64 = "0.22.1"
 env_logger = "0.11.3"
