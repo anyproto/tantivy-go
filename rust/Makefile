@@ -14,9 +14,8 @@ setup:
 	@rustup target add x86_64-apple-darwin
 	@rustup target add x86_64-pc-windows-gnu
 
-# strange SIGSEGV at higher levels of optimization
 build-linux-amd64-musl:
-	env TARGET_CC=x86_64-linux-musl-gcc RUSTFLAGS='-C opt-level=1' cargo build --release --target x86_64-unknown-linux-musl
+	env TARGET_CC=x86_64-linux-musl-gcc cargo build --release --target x86_64-unknown-linux-musl
 
 install-linux-amd64-musl: build-linux-amd64-musl
 	@mkdir -p ../libs/linux-amd64-musl

@@ -48,3 +48,9 @@ Expected output:
 ```
  880     minos 11.0
 ```
+
+### Possible troubleshooting
+If you experience SIGSEGV issues with musl or windows, try adding these flags to the linker:
+```
+-extldflags '-static -Wl,-z stack-size=1000000'
+```
