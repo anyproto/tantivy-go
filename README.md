@@ -88,4 +88,4 @@ tantivy_compile_all_musl
 To check that it works, run `anytype-ts` and try to search something.
 
 > [!NOTE]
-> MacOS (Darwin) nix shell is not tested yet
+> MacOS (Darwin) nix shell is not supported yet
