@@ -54,3 +54,38 @@ If you experience SIGSEGV issues with musl or windows, try adding these flags to
 ```
 -extldflags '-static -Wl,-z stack-size=1000000'
 ```
+
+### Nix
+
+`flake.nix` currently provides two versions of `devShell`: musl and gcc.
+
+This command will make a bash shell with all required build dependencies:
+
+```bash
+nix develop .
+```
+
+Each `devShell` also contains a script which:
+
+- builds rust into `.a` lib
+- copies it to `../anytype-heart`
+- builds `anytype-heart` `grpcServer`
+- copies `grpcServer` to `../anytype-ts` `anytypeHelper`
+
+> [!TIP]
+> To enable musl, set `musl = true;` in `flake.nix`.
+
+If you want to debug `tantivy` from `anytype-ts`, with `musl` or `gcc`, this scripts automates all the flow.
+
+All together it would look like:
+```bash
+nix develop .
+tantivy_compile_all_gcc
+# or
+tantivy_compile_all_musl
+```
+
+To check that it works, run `anytype-ts` and try to search something.
+
+> [!NOTE]
+> MacOS (Darwin) nix shell is not supported yet
