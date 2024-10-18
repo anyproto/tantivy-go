@@ -99,7 +99,7 @@ install-debug-ios-arm64: build-debug-ios-arm64
 	@cp target/aarch64-apple-ios/debug/libtantivy_go.a ../libs/ios-arm64
 
 build-ios-arm64-sim:
-	env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-ios-sim
+	env RUSTFLAGS="-Z sanitizer=address" env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-ios-sim
 
 install-ios-arm64-sim: build-ios-arm64-sim
 	@mkdir -p ../libs/ios-arm64-sim
