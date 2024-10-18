@@ -85,7 +85,7 @@ install-debug-android-amd64: build-debug-android-amd64
 	@cp target/x86_64-linux-android/debug/libtantivy_go.a ../libs/android-amd64
 
 build-ios-arm64:
-	env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-ios
+	RUSTFLAGS='-C opt-level=1' env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-ios
 
 install-ios-arm64: build-ios-arm64
 	@mkdir -p ../libs/ios-arm64
@@ -99,7 +99,7 @@ install-debug-ios-arm64: build-debug-ios-arm64
 	@cp target/aarch64-apple-ios/debug/libtantivy_go.a ../libs/ios-arm64
 
 build-ios-arm64-sim:
-	env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-ios-sim
+	RUSTFLAGS='-C opt-level=1' env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-ios-sim
 
 install-ios-arm64-sim: build-ios-arm64-sim
 	@mkdir -p ../libs/ios-arm64-sim
@@ -113,7 +113,7 @@ install-debug-ios-arm64-sim: build-debug-ios-arm64-sim
 	@cp target/aarch64-apple-ios-sim/debug/libtantivy_go.a ../libs/ios-arm64-sim
 
 build-ios-amd64:
-	env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target x86_64-apple-ios
+	RUSTFLAGS='-C opt-level=1' env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target x86_64-apple-ios
 
 install-ios-amd64: build-ios-amd64
 	@mkdir -p ../libs/ios-amd64
