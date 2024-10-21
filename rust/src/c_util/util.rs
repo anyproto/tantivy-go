@@ -211,7 +211,7 @@ pub fn add_and_consume_documents(
     }
 
     if writer.commit().is_err() {
-        set_error("Failed to commit document", error_buffer)
+        rollback(error_buffer, writer, "Failed to commit the document");
     }
 }
 
@@ -225,26 +225,39 @@ pub fn delete_docs(
     let schema = context.index.schema();
 
     let field = match schema_apply_for_field::<Field, (), _>
-        (error_buffer, schema.clone(), field_name, |field, _| {
-            match get_string_field_entry(schema.clone(), field) {
-                Ok(value) => Ok(value),
-                Err(_) => Err(())
-            }
-        }) {
+        (error_buffer, schema.clone(), field_name, |field, _|
+        match get_string_field_entry(schema.clone(), field) {
+            Ok(value) => Ok(value),
+            Err(_) => Err(())
+        },
+        ) {
         Ok(value) => value,
-        Err(_) => return
+        Err(_) => {
+            rollback(error_buffer, &mut context.writer, "Failed to apply schema for field");
+            return;
+        }
     };
 
     if process_string_slice(delete_ids_ptr, error_buffer, delete_ids_len, |id_value| {
         let _ = context.writer.delete_term(Term::from_field_text(field, id_value));
         Ok(())
     }).is_err() {
+        rollback(error_buffer, &mut context.writer, "Failed to process string slice");
         return;
     }
 
     if context.writer.commit().is_err() {
-        set_error("Failed to commit removing", error_buffer)
+        rollback(error_buffer, &mut context.writer, "Failed to commit removing");
     }
+}
+
+fn rollback(
+    error_buffer: *mut *mut c_char,
+    writer: &mut IndexWriter,
+    message: &str
+) {
+    let _ = writer.rollback();
+    set_error(message, error_buffer);
 }
 
 pub fn get_doc<'a>(
