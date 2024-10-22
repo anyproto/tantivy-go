@@ -1,4 +1,4 @@
-use std::{fs, panic, slice, thread};
+use std::{fs, panic, slice};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -161,12 +161,18 @@ pub fn convert_document_as_json(
 }
 
 pub fn start_lib_init(log_level: &str, clear_on_panic: bool) {
+    // moved old_hook init herer
+    let old_hook = panic::take_hook();
     if clear_on_panic {
+        // rust complains that old_hook doesn't live long enough --
+        // because old hook will be deleted after start_lib_init,
+        // and hook, from the other hand, coul be (most likely actually) fired later
+        // so we move ownership to closure via `move`
         panic::set_hook(Box::new(move |panic_info| {
             let _ = match FTS_PATH.lock() {
                 Ok(fts_path) => {
                     let fts_path = fts_path.as_str();
-                    if fts_path.is_empty() {
+                    if fts_path == "" {
                         debug!("fts path is empty");
                     } else {
                         let _ = fs::remove_dir_all(Path::new(fts_path));
@@ -176,9 +182,11 @@ pub fn start_lib_init(log_level: &str, clear_on_panic: bool) {
                     debug!("Set hook err: {}", e);
                 }
             };
-            thread::spawn(move || {
-                OLD_HOOK(panic_info.clone())
-            });
+            // "cannot modify the panic hook from a panicking thread"
+            // happened here actually, because old hook was lazy.
+            // it was created on-demand, on first call (sort of singleton)
+            old_hook(panic_info)
+            // btw, old_hook doesn't do much -- it just prints backtrace if RUST_BACKTRACE=1
         }));
     }
 

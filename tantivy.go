@@ -35,7 +35,7 @@ var doOnce sync.Once
 //
 // Returns:
 // - An error if the initialization fails.
-func LibInit(clearOnPanic bool, directive ...string) error {
+func LibInit(cleanOnPanic bool, directive ...string) error {
 	var initVal string
 	var err error
 	doOnce.Do(func() {
@@ -47,8 +47,9 @@ func LibInit(clearOnPanic bool, directive ...string) error {
 
 		cInitVal := C.CString(initVal)
 		defer C.string_free(cInitVal)
+		cCleanOnPanic := C.bool(cleanOnPanic)
 		var errBuffer *C.char
-		C.init_lib(cInitVal, &errBuffer, C.bool(clearOnPanic))
+		C.init_lib(cInitVal, &errBuffer, cCleanOnPanic)
 
 		errorMessage := C.GoString(errBuffer)
 		defer C.string_free(errBuffer)
