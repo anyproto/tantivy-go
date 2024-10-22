@@ -401,10 +401,11 @@ pub extern "C" fn string_free(s: *mut c_char) {
 pub unsafe extern "C" fn init_lib(
     log_level_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
+    clear_on_panic: bool
 ) {
     let log_level = match assert_string(log_level_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
-    start_lib_init(log_level);
+    start_lib_init(log_level, clear_on_panic);
 }

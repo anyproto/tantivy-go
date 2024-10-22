@@ -1,8 +1,11 @@
-use std::{fs, slice};
+use std::{fs, panic, slice};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::panic::PanicInfo;
 use std::path::Path;
+use std::sync::Mutex;
+use lazy_static::lazy_static;
 use log::debug;
 use serde_json::json;
 use tantivy::{Index, IndexWriter, TantivyDocument, TantivyError, Term};
@@ -11,6 +14,11 @@ use tantivy::query::{QueryParser};
 use tantivy::schema::{Field, Schema};
 
 use crate::tantivy_util::{convert_document_to_json, Document, TantivyContext, DOCUMENT_BUDGET_BYTES, find_highlights, get_string_field_entry, SearchResult};
+
+lazy_static! {
+    static ref OLD_HOOK: Box<dyn Fn(&PanicInfo) + Send + Sync> = panic::take_hook();
+    static ref FTS_PATH: Mutex<String> = Mutex::new(String::from(""));
+}
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {
@@ -152,13 +160,37 @@ pub fn convert_document_as_json(
     Ok(json!(doc_json).to_string())
 }
 
-pub fn start_lib_init(log_level: &str) {
+pub fn start_lib_init(log_level: &str, clear_on_panic: bool) {
+    if clear_on_panic {
+        panic::set_hook(Box::new(|panic_info| {
+            let _ = match FTS_PATH.lock() {
+                Ok(fts_path) => {
+                    let fts_path = fts_path.as_str();
+                    if fts_path == "" {
+                        debug!("fts path is empty");
+                    }else {
+                        let _ = fs::remove_dir_all(Path::new(fts_path));
+                    }
+                }
+                Err(e) => {
+                    debug!("Set hook err: {}", e);
+                }
+            };
+            OLD_HOOK(panic_info)
+        }));
+    }
+
     let _ = env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or(log_level)
     ).try_init();
 }
 
 pub fn create_context_with_schema(error_buffer: *mut *mut c_char, schema: Schema, path: &str) -> Result<*mut TantivyContext, ()> {
+    match FTS_PATH.lock() {
+        Ok(mut fts_path) => *fts_path = path.to_string(),
+        Err(e) => debug!("Failed to set path: {}", e),
+    };
+
     match fs::create_dir_all(Path::new(path)) {
         Err(e) => {
             debug!("Failed to create directories: {}", e);
@@ -168,7 +200,7 @@ pub fn create_context_with_schema(error_buffer: *mut *mut c_char, schema: Schema
         _ => {}
     }
 
-    let dir = match MmapDirectory::open(path) {
+    let dir = match MmapDirectory::open(path.to_owned()) {
         Ok(dir) => dir,
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
@@ -254,7 +286,7 @@ pub fn delete_docs(
 fn rollback(
     error_buffer: *mut *mut c_char,
     writer: &mut IndexWriter,
-    message: &str
+    message: &str,
 ) {
     let _ = writer.rollback();
     set_error(message, error_buffer);
