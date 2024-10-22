@@ -36,7 +36,7 @@ fn write_buffer(error_buffer: *mut *mut c_char, err_str: CString) {
     }
 }
 
-pub fn assert_string<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<&'a str> {
+pub fn assert_str<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<&'a str> {
     let result = unsafe {
         if str_ptr.is_null() {
             set_error(POINTER_IS_NULL, error_buffer);
@@ -106,7 +106,7 @@ where
     };
 
     for &item in slice {
-        let value = match assert_string(item, error_buffer) {
+        let value = match assert_str(item, error_buffer) {
             Some(value) => value,
             None => return Err(()),
         };
@@ -349,7 +349,7 @@ pub fn search(
         return Err(());
     }
 
-    let query = match assert_string(query_ptr, error_buffer) {
+    let query = match assert_str(query_ptr, error_buffer) {
         Some(value) => value,
         None => return Err(())
     };

@@ -4,7 +4,7 @@ use std::ptr;
 use logcall::logcall;
 use tantivy::{schema::*};
 
-use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
+use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_str, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
 use crate::tantivy_util::{add_text_field, Document, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, SearchResult, TantivyContext};
 
 mod tantivy_util;
@@ -33,12 +33,12 @@ pub extern "C" fn schema_builder_add_text_field(
         None => return
     };
 
-    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    let field_name = match assert_string(field_name_ptr, error_buffer) {
+    let field_name = match assert_str(field_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -79,7 +79,7 @@ pub extern "C" fn context_create_with_schema(
         None => return ptr::null_mut(),
     };
 
-    let path = match assert_string(path_ptr, error_buffer) {
+    let path = match assert_str(path_ptr, error_buffer) {
         Some(value) => value,
         None => return ptr::null_mut(),
     };
@@ -105,7 +105,7 @@ pub extern "C" fn context_register_text_analyzer_ngram(
         None => return
     };
 
-    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -131,7 +131,7 @@ pub extern "C" fn context_register_text_analyzer_edge_ngram(
         None => return
     };
 
-    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -153,12 +153,12 @@ pub extern "C" fn context_register_text_analyzer_simple(
         None => return
     };
 
-    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    let lang = match assert_string(lang_str_ptr, error_buffer) {
+    let lang = match assert_str(lang_str_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -178,7 +178,7 @@ pub extern "C" fn context_register_text_analyzer_raw(
         None => return
     };
 
-    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -216,7 +216,7 @@ pub extern "C" fn context_delete_documents(
         None => return
     };
 
-    let field_name = match assert_string(field_name_ptr, error_buffer) {
+    let field_name = match assert_str(field_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -333,12 +333,12 @@ pub extern "C" fn document_add_field(
         None => return
     };
 
-    let field_name = match assert_string(field_name_ptr, error_buffer) {
+    let field_name = match assert_str(field_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    let field_value = match assert_string(field_value_ptr, error_buffer) {
+    let field_value = match assert_str(field_value_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -403,7 +403,7 @@ pub unsafe extern "C" fn init_lib(
     error_buffer: *mut *mut c_char,
     clear_on_panic: bool
 ) {
-    let log_level = match assert_string(log_level_ptr, error_buffer) {
+    let log_level = match assert_str(log_level_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
