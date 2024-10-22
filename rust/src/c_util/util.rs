@@ -1,4 +1,4 @@
-use std::{fs, panic, slice};
+use std::{fs, panic, slice, thread};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -162,13 +162,13 @@ pub fn convert_document_as_json(
 
 pub fn start_lib_init(log_level: &str, clear_on_panic: bool) {
     if clear_on_panic {
-        panic::set_hook(Box::new(|panic_info| {
+        panic::set_hook(Box::new(move |panic_info| {
             let _ = match FTS_PATH.lock() {
                 Ok(fts_path) => {
                     let fts_path = fts_path.as_str();
-                    if fts_path == "" {
+                    if fts_path.is_empty() {
                         debug!("fts path is empty");
-                    }else {
+                    } else {
                         let _ = fs::remove_dir_all(Path::new(fts_path));
                     }
                 }
@@ -176,7 +176,9 @@ pub fn start_lib_init(log_level: &str, clear_on_panic: bool) {
                     debug!("Set hook err: {}", e);
                 }
             };
-            OLD_HOOK(panic_info)
+            thread::spawn(move || {
+                OLD_HOOK(panic_info.clone())
+            });
         }));
     }
 
