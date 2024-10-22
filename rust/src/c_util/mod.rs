@@ -1,7 +1,6 @@
 mod util;
 
 pub use self::util::set_error;
-pub use self::util::assert_str;
 pub use self::util::assert_string;
 pub use self::util::assert_pointer;
 pub use self::util::convert_document_as_json;

@@ -4,7 +4,7 @@ use std::ptr;
 use logcall::logcall;
 use tantivy::{schema::*};
 
-use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_str, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
+use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
 use crate::tantivy_util::{add_text_field, Document, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, SearchResult, TantivyContext};
 
 mod tantivy_util;
@@ -158,12 +158,12 @@ pub extern "C" fn context_register_text_analyzer_simple(
         None => return
     };
 
-    let lang = match assert_str(lang_str_ptr, error_buffer) {
+    let lang = match assert_string(lang_str_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    register_simple_tokenizer(text_limit, &context.index, tokenizer_name.as_str(), lang);
+    register_simple_tokenizer(text_limit, &context.index, tokenizer_name.as_str(), lang.as_str());
 }
 
 #[logcall]
@@ -216,7 +216,7 @@ pub extern "C" fn context_delete_documents(
         None => return
     };
 
-    let field_name = match assert_str(field_name_ptr, error_buffer) {
+    let field_name = match assert_string(field_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -343,7 +343,7 @@ pub extern "C" fn document_add_field(
         None => return
     };
 
-    add_field(error_buffer, doc, &context.index, field_name.as_str(), field_value.as_str());
+    add_field(error_buffer, doc, &context.index, field_name, field_value);
 }
 
 #[logcall]

@@ -52,13 +52,6 @@ fn process_c_str<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> 
     }
 }
 
-pub fn assert_str<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<&'a str> {
-    match process_c_str(str_ptr, error_buffer) {
-        Ok(valid_str) => Some(valid_str),
-        Err(_) => None,
-    }
-}
-
 pub fn assert_string(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<String> {
     match process_c_str(str_ptr, error_buffer) {
         Ok(valid_str) => Some(valid_str.to_owned()),
@@ -112,7 +105,7 @@ pub fn process_string_slice<'a, F>(
     mut func: F,
 ) -> Result<(), ()>
 where
-    F: FnMut(&'a str) -> Result<(), ()>,
+    F: FnMut(String) -> Result<(), ()>,
 {
     let slice = match assert_pointer(ptr, error_buffer) {
         Some(ptr) => unsafe { slice::from_raw_parts(ptr, len) },
@@ -120,7 +113,7 @@ where
     };
 
     for &item in slice {
-        let value = match assert_str(item, error_buffer) {
+        let value = match assert_string(item, error_buffer) {
             Some(value) => value,
             None => return Err(()),
         };
@@ -133,14 +126,14 @@ where
     Ok(())
 }
 
-pub fn schema_apply_for_field<'a, T, K, F: FnMut(Field, &'a str) -> Result<T, ()>>(
+pub fn schema_apply_for_field<'a, T, K, F: FnMut(Field, String) -> Result<T, ()>>(
     error_buffer: *mut *mut c_char,
     schema: Schema,
-    field_name: &'a str,
+    field_name: String,
     mut func: F,
 ) -> Result<T, ()>
 {
-    match schema.get_field(field_name) {
+    match schema.get_field(field_name.as_str()) {
         Ok(field) => func(field, field_name),
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
@@ -270,7 +263,7 @@ pub fn delete_docs(
     delete_ids_len: usize,
     error_buffer: *mut *mut c_char,
     context: &mut TantivyContext,
-    field_name: &str,
+    field_name: String,
 ) {
     let schema = context.index.schema();
 
@@ -289,7 +282,7 @@ pub fn delete_docs(
     };
 
     if process_string_slice(delete_ids_ptr, error_buffer, delete_ids_len, |id_value| {
-        let _ = context.writer.delete_term(Term::from_field_text(field, id_value));
+        let _ = context.writer.delete_term(Term::from_field_text(field, id_value.as_str()));
         Ok(())
     }).is_err() {
         rollback(error_buffer, &mut context.writer, "Failed to process string slice");
@@ -328,8 +321,8 @@ pub fn add_field(
     error_buffer: *mut *mut c_char,
     doc: &mut Document,
     index: &Index,
-    field_name: &str,
-    field_value: &str,
+    field_name: String,
+    field_value: String,
 ) {
     let schema = index.schema();
     let field = match schema_apply_for_field::<Field, (), _>
@@ -367,14 +360,14 @@ pub fn search(
         return Err(());
     }
 
-    let query = match assert_str(query_ptr, error_buffer) {
+    let query = match assert_string(query_ptr, error_buffer) {
         Some(value) => value,
         None => return Err(())
     };
 
     let query_parser = QueryParser::for_index(&context.index, fields);
 
-    let query = match query_parser.parse_query(query) {
+    let query = match query_parser.parse_query(query.as_str()) {
         Ok(query) => query,
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
