@@ -2,7 +2,6 @@ use std::{fs, panic, slice};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
-use std::panic::PanicInfo;
 use std::path::Path;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
@@ -36,22 +35,37 @@ fn write_buffer(error_buffer: *mut *mut c_char, err_str: CString) {
     }
 }
 
-pub fn assert_str<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<&'a str> {
-    let result = unsafe {
+fn process_c_str<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Result<&'a str, String> {
+    unsafe {
         if str_ptr.is_null() {
             set_error(POINTER_IS_NULL, error_buffer);
-            return None;
+            return Err(POINTER_IS_NULL.to_owned());
         }
-        CStr::from_ptr(str_ptr)
-    }.to_str();
-    match result {
-        Ok(str) => Some(str),
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return None;
+        match CStr::from_ptr(str_ptr).to_str() {
+            Ok(valid_str) => Ok(valid_str),
+            Err(err) => {
+                let error_message = err.to_string();
+                set_error(&error_message, error_buffer);
+                Err(error_message)
+            }
         }
     }
 }
+
+pub fn assert_str<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<&'a str> {
+    match process_c_str(str_ptr, error_buffer) {
+        Ok(valid_str) => Some(valid_str),
+        Err(_) => None,
+    }
+}
+
+pub fn assert_string(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<String> {
+    match process_c_str(str_ptr, error_buffer) {
+        Ok(valid_str) => Some(valid_str.to_owned()),
+        Err(_) => None,
+    }
+}
+
 
 pub fn assert_pointer<'a, T>(ptr: *mut T, error_buffer: *mut *mut c_char) -> Option<&'a mut T> {
     let result = unsafe {
@@ -159,7 +173,7 @@ pub fn convert_document_as_json(
     Ok(json!(doc_json).to_string())
 }
 
-pub fn start_lib_init(log_level: &str, clear_on_panic: bool) {
+pub fn start_lib_init(log_level: String, clear_on_panic: bool) {
     let old_hook = panic::take_hook();
     if clear_on_panic {
         panic::set_hook(Box::new(move |panic_info| {
@@ -185,13 +199,17 @@ pub fn start_lib_init(log_level: &str, clear_on_panic: bool) {
     ).try_init();
 }
 
-pub fn create_context_with_schema(error_buffer: *mut *mut c_char, schema: Schema, path: &str) -> Result<*mut TantivyContext, ()> {
+pub fn create_context_with_schema(
+    error_buffer: *mut *mut c_char,
+    schema: Schema,
+    path: String,
+) -> Result<*mut TantivyContext, ()> {
     match FTS_PATH.lock() {
-        Ok(mut fts_path) => *fts_path = path.to_string(),
+        Ok(mut fts_path) => *fts_path = path.clone(),
         Err(e) => debug!("Failed to set path: {}", e),
     };
 
-    match fs::create_dir_all(Path::new(path)) {
+    match fs::create_dir_all(Path::new(path.as_str())) {
         Err(e) => {
             debug!("Failed to create directories: {}", e);
             set_error(&e.to_string(), error_buffer);
@@ -200,7 +218,7 @@ pub fn create_context_with_schema(error_buffer: *mut *mut c_char, schema: Schema
         _ => {}
     }
 
-    let dir = match MmapDirectory::open(path.to_owned()) {
+    let dir = match MmapDirectory::open(path) {
         Ok(dir) => dir,
         Err(err) => {
             set_error(&err.to_string(), error_buffer);

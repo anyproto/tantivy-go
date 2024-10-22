@@ -352,7 +352,7 @@ func fx(
 	minGram uintptr,
 	isFastId bool,
 ) (*tantivy_go.Schema, *tantivy_go.TantivyContext) {
-	err := tantivy_go.LibInit("debug")
+	err := tantivy_go.LibInit(true, "debug")
 	assert.NoError(t, err)
 	builder, err := tantivy_go.NewSchemaBuilder()
 	require.NoError(t, err)

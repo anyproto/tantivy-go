@@ -4,7 +4,7 @@ use std::ptr;
 use logcall::logcall;
 use tantivy::{schema::*};
 
-use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_str, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
+use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_str, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
 use crate::tantivy_util::{add_text_field, Document, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, SearchResult, TantivyContext};
 
 mod tantivy_util;
@@ -33,12 +33,12 @@ pub extern "C" fn schema_builder_add_text_field(
         None => return
     };
 
-    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    let field_name = match assert_str(field_name_ptr, error_buffer) {
+    let field_name = match assert_string(field_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -50,7 +50,7 @@ pub extern "C" fn schema_builder_add_text_field(
         _ => return set_error("index_record_option_const is wrong", error_buffer)
     };
 
-    add_text_field(stored, is_text, is_fast, builder, tokenizer_name, field_name, index_record_option);
+    add_text_field(stored, is_text, is_fast, builder, tokenizer_name.as_str(), field_name.as_str(), index_record_option);
 }
 
 #[logcall]
@@ -79,7 +79,7 @@ pub extern "C" fn context_create_with_schema(
         None => return ptr::null_mut(),
     };
 
-    let path = match assert_str(path_ptr, error_buffer) {
+    let path = match assert_string(path_ptr, error_buffer) {
         Some(value) => value,
         None => return ptr::null_mut(),
     };
@@ -105,12 +105,12 @@ pub extern "C" fn context_register_text_analyzer_ngram(
         None => return
     };
 
-    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    match register_ngram_tokenizer(min_gram, max_gram, prefix_only, &context.index, tokenizer_name) {
+    match register_ngram_tokenizer(min_gram, max_gram, prefix_only, &context.index, tokenizer_name.as_str()) {
         Err(err) => return set_error(&err.to_string(), error_buffer),
         _ => return
     };
@@ -131,12 +131,12 @@ pub extern "C" fn context_register_text_analyzer_edge_ngram(
         None => return
     };
 
-    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    register_edge_ngram_tokenizer(min_gram, max_gram, limit, &context.index, tokenizer_name);
+    register_edge_ngram_tokenizer(min_gram, max_gram, limit, &context.index, tokenizer_name.as_str());
 }
 
 #[logcall]
@@ -153,7 +153,7 @@ pub extern "C" fn context_register_text_analyzer_simple(
         None => return
     };
 
-    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -163,7 +163,7 @@ pub extern "C" fn context_register_text_analyzer_simple(
         None => return
     };
 
-    register_simple_tokenizer(text_limit, &context.index, tokenizer_name, lang);
+    register_simple_tokenizer(text_limit, &context.index, tokenizer_name.as_str(), lang);
 }
 
 #[logcall]
@@ -178,12 +178,12 @@ pub extern "C" fn context_register_text_analyzer_raw(
         None => return
     };
 
-    let tokenizer_name = match assert_str(tokenizer_name_ptr, error_buffer) {
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    register_raw_tokenizer(&context.index, tokenizer_name);
+    register_raw_tokenizer(&context.index, tokenizer_name.as_str());
 }
 
 #[logcall]
@@ -333,17 +333,17 @@ pub extern "C" fn document_add_field(
         None => return
     };
 
-    let field_name = match assert_str(field_name_ptr, error_buffer) {
+    let field_name = match assert_string(field_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    let field_value = match assert_str(field_value_ptr, error_buffer) {
+    let field_value = match assert_string(field_value_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    add_field(error_buffer, doc, &context.index, field_name, field_value);
+    add_field(error_buffer, doc, &context.index, field_name.as_str(), field_value.as_str());
 }
 
 #[logcall]
@@ -403,7 +403,7 @@ pub unsafe extern "C" fn init_lib(
     error_buffer: *mut *mut c_char,
     clear_on_panic: bool
 ) {
-    let log_level = match assert_str(log_level_ptr, error_buffer) {
+    let log_level = match assert_string(log_level_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
