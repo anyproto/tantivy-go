@@ -1,8 +1,10 @@
-use std::{fs, slice};
+use std::{fs, panic, slice};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::path::Path;
+use std::sync::Mutex;
+use lazy_static::lazy_static;
 use log::debug;
 use serde_json::json;
 use tantivy::{Index, IndexWriter, TantivyDocument, TantivyError, Term};
@@ -11,6 +13,10 @@ use tantivy::query::{QueryParser};
 use tantivy::schema::{Field, Schema};
 
 use crate::tantivy_util::{convert_document_to_json, Document, TantivyContext, DOCUMENT_BUDGET_BYTES, find_highlights, get_string_field_entry, SearchResult};
+
+lazy_static! {
+    static ref FTS_PATH: Mutex<String> = Mutex::new(String::from(""));
+}
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {
@@ -29,22 +35,30 @@ fn write_buffer(error_buffer: *mut *mut c_char, err_str: CString) {
     }
 }
 
-pub fn assert_string<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<&'a str> {
-    let result = unsafe {
+fn process_c_str<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Result<&'a str, String> {
+    unsafe {
         if str_ptr.is_null() {
             set_error(POINTER_IS_NULL, error_buffer);
-            return None;
+            return Err(POINTER_IS_NULL.to_owned());
         }
-        CStr::from_ptr(str_ptr)
-    }.to_str();
-    match result {
-        Ok(str) => Some(str),
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return None;
+        match CStr::from_ptr(str_ptr).to_str() {
+            Ok(valid_str) => Ok(valid_str),
+            Err(err) => {
+                let error_message = err.to_string();
+                set_error(&error_message, error_buffer);
+                Err(error_message)
+            }
         }
     }
 }
+
+pub fn assert_string(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<String> {
+    match process_c_str(str_ptr, error_buffer) {
+        Ok(valid_str) => Some(valid_str.to_owned()),
+        Err(_) => None,
+    }
+}
+
 
 pub fn assert_pointer<'a, T>(ptr: *mut T, error_buffer: *mut *mut c_char) -> Option<&'a mut T> {
     let result = unsafe {
@@ -91,7 +105,7 @@ pub fn process_string_slice<'a, F>(
     mut func: F,
 ) -> Result<(), ()>
 where
-    F: FnMut(&'a str) -> Result<(), ()>,
+    F: FnMut(String) -> Result<(), ()>,
 {
     let slice = match assert_pointer(ptr, error_buffer) {
         Some(ptr) => unsafe { slice::from_raw_parts(ptr, len) },
@@ -112,14 +126,14 @@ where
     Ok(())
 }
 
-pub fn schema_apply_for_field<'a, T, K, F: FnMut(Field, &'a str) -> Result<T, ()>>(
+pub fn schema_apply_for_field<'a, T, K, F: FnMut(Field, String) -> Result<T, ()>>(
     error_buffer: *mut *mut c_char,
     schema: Schema,
-    field_name: &'a str,
+    field_name: String,
     mut func: F,
 ) -> Result<T, ()>
 {
-    match schema.get_field(field_name) {
+    match schema.get_field(field_name.as_str()) {
         Ok(field) => func(field, field_name),
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
@@ -152,14 +166,43 @@ pub fn convert_document_as_json(
     Ok(json!(doc_json).to_string())
 }
 
-pub fn start_lib_init(log_level: &str) {
+pub fn start_lib_init(log_level: String, clear_on_panic: bool) {
+    let old_hook = panic::take_hook();
+    if clear_on_panic {
+        panic::set_hook(Box::new(move |panic_info| {
+            let _ = match FTS_PATH.lock() {
+                Ok(fts_path) => {
+                    let fts_path = fts_path.as_str();
+                    if fts_path.is_empty() {
+                        debug!("fts path is empty");
+                    } else {
+                        let _ = fs::remove_dir_all(Path::new(fts_path));
+                    }
+                }
+                Err(e) => {
+                    debug!("Set hook err: {}", e);
+                }
+            };
+            old_hook(panic_info)
+        }));
+    }
+
     let _ = env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or(log_level)
     ).try_init();
 }
 
-pub fn create_context_with_schema(error_buffer: *mut *mut c_char, schema: Schema, path: &str) -> Result<*mut TantivyContext, ()> {
-    match fs::create_dir_all(Path::new(path)) {
+pub fn create_context_with_schema(
+    error_buffer: *mut *mut c_char,
+    schema: Schema,
+    path: String,
+) -> Result<*mut TantivyContext, ()> {
+    match FTS_PATH.lock() {
+        Ok(mut fts_path) => *fts_path = path.clone(),
+        Err(e) => debug!("Failed to set path: {}", e),
+    };
+
+    match fs::create_dir_all(Path::new(path.as_str())) {
         Err(e) => {
             debug!("Failed to create directories: {}", e);
             set_error(&e.to_string(), error_buffer);
@@ -220,7 +263,7 @@ pub fn delete_docs(
     delete_ids_len: usize,
     error_buffer: *mut *mut c_char,
     context: &mut TantivyContext,
-    field_name: &str,
+    field_name: String,
 ) {
     let schema = context.index.schema();
 
@@ -239,7 +282,7 @@ pub fn delete_docs(
     };
 
     if process_string_slice(delete_ids_ptr, error_buffer, delete_ids_len, |id_value| {
-        let _ = context.writer.delete_term(Term::from_field_text(field, id_value));
+        let _ = context.writer.delete_term(Term::from_field_text(field, id_value.as_str()));
         Ok(())
     }).is_err() {
         rollback(error_buffer, &mut context.writer, "Failed to process string slice");
@@ -254,7 +297,7 @@ pub fn delete_docs(
 fn rollback(
     error_buffer: *mut *mut c_char,
     writer: &mut IndexWriter,
-    message: &str
+    message: &str,
 ) {
     let _ = writer.rollback();
     set_error(message, error_buffer);
@@ -278,8 +321,8 @@ pub fn add_field(
     error_buffer: *mut *mut c_char,
     doc: &mut Document,
     index: &Index,
-    field_name: &str,
-    field_value: &str,
+    field_name: String,
+    field_value: String,
 ) {
     let schema = index.schema();
     let field = match schema_apply_for_field::<Field, (), _>
@@ -324,7 +367,7 @@ pub fn search(
 
     let query_parser = QueryParser::for_index(&context.index, fields);
 
-    let query = match query_parser.parse_query(query) {
+    let query = match query_parser.parse_query(query.as_str()) {
         Ok(query) => query,
         Err(err) => {
             set_error(&err.to_string(), error_buffer);

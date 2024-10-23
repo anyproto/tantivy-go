@@ -50,7 +50,7 @@ pub extern "C" fn schema_builder_add_text_field(
         _ => return set_error("index_record_option_const is wrong", error_buffer)
     };
 
-    add_text_field(stored, is_text, is_fast, builder, tokenizer_name, field_name, index_record_option);
+    add_text_field(stored, is_text, is_fast, builder, tokenizer_name.as_str(), field_name.as_str(), index_record_option);
 }
 
 #[logcall]
@@ -110,7 +110,7 @@ pub extern "C" fn context_register_text_analyzer_ngram(
         None => return
     };
 
-    match register_ngram_tokenizer(min_gram, max_gram, prefix_only, &context.index, tokenizer_name) {
+    match register_ngram_tokenizer(min_gram, max_gram, prefix_only, &context.index, tokenizer_name.as_str()) {
         Err(err) => return set_error(&err.to_string(), error_buffer),
         _ => return
     };
@@ -136,7 +136,7 @@ pub extern "C" fn context_register_text_analyzer_edge_ngram(
         None => return
     };
 
-    register_edge_ngram_tokenizer(min_gram, max_gram, limit, &context.index, tokenizer_name);
+    register_edge_ngram_tokenizer(min_gram, max_gram, limit, &context.index, tokenizer_name.as_str());
 }
 
 #[logcall]
@@ -163,7 +163,7 @@ pub extern "C" fn context_register_text_analyzer_simple(
         None => return
     };
 
-    register_simple_tokenizer(text_limit, &context.index, tokenizer_name, lang);
+    register_simple_tokenizer(text_limit, &context.index, tokenizer_name.as_str(), lang.as_str());
 }
 
 #[logcall]
@@ -183,7 +183,7 @@ pub extern "C" fn context_register_text_analyzer_raw(
         None => return
     };
 
-    register_raw_tokenizer(&context.index, tokenizer_name);
+    register_raw_tokenizer(&context.index, tokenizer_name.as_str());
 }
 
 #[logcall]
@@ -401,10 +401,11 @@ pub extern "C" fn string_free(s: *mut c_char) {
 pub unsafe extern "C" fn init_lib(
     log_level_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
+    clear_on_panic: bool
 ) {
     let log_level = match assert_string(log_level_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
-    start_lib_init(log_level);
+    start_lib_init(log_level, clear_on_panic);
 }

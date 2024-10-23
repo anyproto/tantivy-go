@@ -13,7 +13,7 @@ const NameTitle = "title"
 
 func main() {
 	// Initialize the library
-	err := tantivy_go.LibInit("debug")
+	err := tantivy_go.LibInit(true, "debug")
 	if err != nil {
 		fmt.Println("Failed to initialize library:", err)
 		return
