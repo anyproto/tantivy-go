@@ -55,6 +55,10 @@ func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
 	}
 	C.context_add_and_consume_documents(tc.ptr, &docsPtr[0], C.uintptr_t(len(docs)), &errBuffer)
 	for _, doc := range docs {
+		// Free the strings in the document
+		// This is necessary because the document is consumed by the index
+		// and the strings are not freed by the index
+		// We might clone strings on the Rust side to avoid that, but that would be inefficient
 		doc.FreeStrings()
 	}
 	return tryExtractError(errBuffer)
