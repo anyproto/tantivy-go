@@ -48,6 +48,9 @@ func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
 		docsPtr[j] = doc.ptr
 	}
 	C.context_add_and_consume_documents(tc.ptr, &docsPtr[0], C.uintptr_t(len(docs)), &errBuffer)
+	for _, doc := range docs {
+		doc.FreeStrings()
+	}
 	return tryExtractError(errBuffer)
 }
 

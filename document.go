@@ -7,7 +7,10 @@ import (
 	"unsafe"
 )
 
-type Document struct{ ptr *C.Document }
+type Document struct {
+	ptr    *C.Document
+	toFree []func()
+}
 
 // NewDocument creates a new instance of Document.
 //
@@ -30,9 +33,9 @@ func NewDocument() *Document {
 //   - error: an error if adding the field fails, or nil if the operation is successful
 func (d *Document) AddField(fieldName, fieldValue string, tc *TantivyContext) error {
 	cFieldName := C.CString(fieldName)
-	defer C.string_free(cFieldName)
+	d.toFree = append(d.toFree, func() { C.string_free(cFieldName) })
 	cFieldValue := C.CString(fieldValue)
-	defer C.string_free(cFieldValue)
+	d.toFree = append(d.toFree, func() { C.string_free(cFieldValue) })
 	var errBuffer *C.char
 	C.document_add_field(d.ptr, cFieldName, cFieldValue, tc.ptr, &errBuffer)
 
@@ -92,4 +95,11 @@ func ToModel[T any](doc *Document, schema *Schema, includeFields []string, f fun
 
 func (d *Document) Free() {
 	C.document_free(d.ptr)
+	d.FreeStrings()
+}
+
+func (d *Document) FreeStrings() {
+	for _, f := range d.toFree {
+		f()
+	}
 }
