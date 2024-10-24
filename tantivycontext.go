@@ -5,10 +5,14 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 )
 
-type TantivyContext struct{ ptr *C.TantivyContext }
+type TantivyContext struct {
+	ptr  *C.TantivyContext
+	lock sync.Mutex // tantivy writer commits should be executed exclusively
+}
 
 // NewTantivyContextWithSchema creates a new instance of TantivyContext with the provided schema.
 //
@@ -39,6 +43,8 @@ func NewTantivyContextWithSchema(path string, schema *Schema) (*TantivyContext, 
 // Returns:
 //   - error: An error if adding and consuming the documents fails.
 func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 	if len(docs) == 0 {
 		return nil
 	}
@@ -63,6 +69,8 @@ func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
 // Returns:
 //   - error: An error if deleting the documents fails.
 func (tc *TantivyContext) DeleteDocuments(field string, deleteIds ...string) error {
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 	if len(deleteIds) == 0 {
 		return nil
 	}
