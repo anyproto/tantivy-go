@@ -15,6 +15,8 @@ import (
 const NameBody = "body"
 const NameId = "id"
 const NameTitle = "title"
+const NameBodyCh = "bodyCh"
+const NameTitleCh = "titleCh"
 
 const limit = 40
 const minGram = 2
@@ -325,12 +327,38 @@ func Test(t *testing.T) {
 		docs, err = tc.NumDocs()
 		require.Equal(t, uint64(0), docs)
 	})
+
+	t.Run("docs search - when jieba", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "", "张华考上了北京大学；李萍进了中等技术学校；我在百货公司当售货员：我们都有光明的前途", "1", tc)
+		require.NoError(t, err)
+
+		doc2, err := addDoc(t, "张华考上了北京大学；李萍进了中等技术学校；我在百货公司当售货员：我们都有光明的前途", "", "2", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc, doc2)
+		require.NoError(t, err)
+
+		docs, err := tc.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), docs)
+
+		result, err := tc.Search("售货员", 100, true, NameBodyCh, NameTitleCh)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		defer result.Free()
+		require.Equal(t, 2, int(size))
+	})
 }
 
 func addDoc(
 	t *testing.T,
 	title string,
-	name string,
+	body string,
 	id string,
 	tc *tantivy_go.TantivyContext,
 ) (*tantivy_go.Document, error) {
@@ -339,10 +367,16 @@ func addDoc(
 	err := doc.AddField(NameTitle, title, tc)
 	require.NoError(t, err)
 
+	err = doc.AddField(NameTitleCh, title, tc)
+	require.NoError(t, err)
+
 	err = doc.AddField(NameId, id, tc)
 	require.NoError(t, err)
 
-	err = doc.AddField(NameBody, name, tc)
+	err = doc.AddField(NameBody, body, tc)
+	require.NoError(t, err)
+
+	err = doc.AddField(NameBodyCh, body, tc)
 	return doc, err
 }
 
@@ -368,6 +402,16 @@ func fx(
 	require.NoError(t, err)
 
 	err = builder.AddTextField(
+		NameTitleCh,
+		true,
+		true,
+		false,
+		tantivy_go.IndexRecordOptionWithFreqsAndPositions,
+		tantivy_go.TokenizerJieba,
+	)
+	require.NoError(t, err)
+
+	err = builder.AddTextField(
 		NameId,
 		true,
 		false,
@@ -387,6 +431,16 @@ func fx(
 	)
 	require.NoError(t, err)
 
+	err = builder.AddTextField(
+		NameBodyCh,
+		true,
+		true,
+		false,
+		tantivy_go.IndexRecordOptionWithFreqsAndPositions,
+		tantivy_go.TokenizerJieba,
+	)
+	require.NoError(t, err)
+
 	schema, err := builder.BuildSchema()
 	require.NoError(t, err)
 
@@ -395,6 +449,9 @@ func fx(
 	require.NoError(t, err)
 
 	err = tc.RegisterTextAnalyzerSimple(tantivy_go.TokenizerSimple, limit, tantivy_go.English)
+	require.NoError(t, err)
+
+	err = tc.RegisterTextAnalyzerJieba(tantivy_go.TokenizerJieba, limit)
 	require.NoError(t, err)
 
 	err = tc.RegisterTextAnalyzerEdgeNgram(tantivy_go.TokenizerEdgeNgram, minGram, 4, 100)

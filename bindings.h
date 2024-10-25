@@ -49,6 +49,11 @@ void context_register_text_analyzer_simple(struct TantivyContext *context_ptr,
                                            const char *lang_str_ptr,
                                            char **error_buffer);
 
+void context_register_jieba_tokenizer(struct TantivyContext *context_ptr,
+                                      const char *tokenizer_name_ptr,
+                                      uintptr_t text_limit,
+                                      char **error_buffer);
+
 void context_register_text_analyzer_raw(struct TantivyContext *context_ptr,
                                         const char *tokenizer_name_ptr,
                                         char **error_buffer);

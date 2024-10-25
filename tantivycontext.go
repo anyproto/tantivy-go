@@ -213,6 +213,23 @@ func (tc *TantivyContext) RegisterTextAnalyzerSimple(tokenizerName string, textL
 	return tryExtractError(errBuffer)
 }
 
+// RegisterTextAnalyzerJieba registers a jieba text analyzer with the index.
+//
+// Parameters:
+//   - tokenizerName (string): The name of the tokenizer to be used.
+//   - textLimit (uintptr): The limit on the length of the text to be analyzed.
+//
+// Returns:
+//   - error: An error if the registration fails.
+func (tc *TantivyContext) RegisterTextAnalyzerJieba(tokenizerName string, textLimit uintptr) error {
+	cTokenizerName := C.CString(tokenizerName)
+	defer C.string_free(cTokenizerName)
+	var errBuffer *C.char
+	C.context_register_jieba_tokenizer(tc.ptr, cTokenizerName, C.uintptr_t(textLimit), &errBuffer)
+
+	return tryExtractError(errBuffer)
+}
+
 // RegisterTextAnalyzerRaw registers a raw text analyzer with the index.
 //
 // Parameters:

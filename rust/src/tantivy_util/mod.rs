@@ -20,6 +20,7 @@ pub use self::scheme_builder::add_text_field;
 pub use self::scheme::get_string_field_entry;
 pub use self::tokenizer::register_edge_ngram_tokenizer;
 pub use self::tokenizer::register_simple_tokenizer;
+pub use self::tokenizer::register_jieba_tokenizer;
 pub use self::tokenizer::register_raw_tokenizer;
 pub use self::tokenizer::register_ngram_tokenizer;
 pub use self::util::extract_text_from_owned_value;

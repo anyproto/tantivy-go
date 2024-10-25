@@ -1,5 +1,5 @@
 use tantivy::{Index, TantivyError};
-use tantivy::tokenizer::{AsciiFoldingFilter, LowerCaser, NgramTokenizer, RawTokenizer, RemoveLongFilter, SimpleTokenizer, TextAnalyzer};
+use tantivy::tokenizer::{AsciiFoldingFilter, LowerCaser, NgramTokenizer, RawTokenizer, RemoveLongFilter, SimpleTokenizer, Stemmer, TextAnalyzer};
 use crate::tantivy_util::{EdgeNgramTokenizer};
 use crate::tantivy_util::stemmer::create_stemmer;
 
@@ -12,13 +12,13 @@ pub fn register_edge_ngram_tokenizer(
     max_gram: usize,
     limit: usize,
     index: &Index,
-    tokenizer_name: &str
+    tokenizer_name: &str,
 ) {
     let text_analyzer = TextAnalyzer::builder(
         EdgeNgramTokenizer::new(
             min_gram,
             max_gram,
-            limit
+            limit,
         ))
         .filter(LowerCaser)
         .filter(AsciiFoldingFilter)
@@ -31,13 +31,27 @@ pub fn register_simple_tokenizer(
     text_limit: usize,
     index: &Index,
     tokenizer_name: &str,
-    lang: &str
+    lang: &str,
 ) {
     let text_analyzer = TextAnalyzer::builder(SimpleTokenizer::default())
         .filter(RemoveLongFilter::limit(text_limit))
         .filter(LowerCaser)
         .filter(AsciiFoldingFilter)
         .filter(create_stemmer(lang))
+        .build();
+
+    register_tokenizer(index, tokenizer_name, text_analyzer);
+}
+
+pub fn register_jieba_tokenizer(
+    text_limit: usize,
+    index: &Index,
+    tokenizer_name: &str,
+) {
+    let text_analyzer = TextAnalyzer::builder(tantivy_jieba::JiebaTokenizer {})
+        .filter(RemoveLongFilter::limit(text_limit))
+        .filter(LowerCaser)
+        .filter(Stemmer::default())
         .build();
 
     register_tokenizer(index, tokenizer_name, text_analyzer);
@@ -53,9 +67,8 @@ pub fn register_ngram_tokenizer(
     max_gram: usize,
     prefix_only: bool,
     index: &Index,
-    tokenizer_name: &str
+    tokenizer_name: &str,
 ) -> Result<(), TantivyError> {
-
     let tokenizer = NgramTokenizer::new(
         min_gram,
         max_gram,

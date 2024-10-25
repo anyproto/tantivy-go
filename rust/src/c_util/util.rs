@@ -52,7 +52,7 @@ fn process_c_str<'a>(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> 
     }
 }
 
-pub fn  assert_string(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<String> {
+pub fn assert_string(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<String> {
     match process_c_str(str_ptr, error_buffer) {
         Ok(valid_str) => Some(valid_str.to_owned()),
         Err(_) => None,
@@ -261,8 +261,14 @@ pub fn add_and_consume_documents(
         return;
     }
 
-    if writer.commit().is_err() {
-        rollback(error_buffer, writer, "Failed to commit the document");
+    commit(writer, "Failed to commit the document", error_buffer)
+}
+
+fn commit(writer: &mut IndexWriter, message: &str, error_buffer: *mut *mut c_char) {
+    let result = writer.commit();
+
+    if result.is_err() {
+        rollback(error_buffer, writer, format!("{}: {}", message, result.unwrap_err()).as_str());
     }
 }
 
@@ -297,9 +303,7 @@ pub fn delete_docs(
         return;
     }
 
-    if context.writer.commit().is_err() {
-        rollback(error_buffer, &mut context.writer, "Failed to commit removing");
-    }
+    commit(&mut context.writer, "Failed to commit removing", error_buffer);
 }
 
 fn rollback(
