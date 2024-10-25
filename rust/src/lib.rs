@@ -4,7 +4,7 @@ use std::ptr;
 use logcall::logcall;
 use tantivy::{schema::*};
 
-use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
+use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_str, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
 use crate::tantivy_util::{add_text_field, Document, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, SearchResult, TantivyContext};
 
 mod tantivy_util;
@@ -50,7 +50,15 @@ pub extern "C" fn schema_builder_add_text_field(
         _ => return set_error("index_record_option_const is wrong", error_buffer)
     };
 
-    add_text_field(stored, is_text, is_fast, builder, tokenizer_name.as_str(), field_name.as_str(), index_record_option);
+    add_text_field(
+        stored,
+        is_text,
+        is_fast,
+        builder,
+        tokenizer_name.as_str(),
+        field_name.as_str(),
+        index_record_option,
+    );
 }
 
 #[logcall]
@@ -110,7 +118,13 @@ pub extern "C" fn context_register_text_analyzer_ngram(
         None => return
     };
 
-    match register_ngram_tokenizer(min_gram, max_gram, prefix_only, &context.index, tokenizer_name.as_str()) {
+    match register_ngram_tokenizer(
+        min_gram,
+        max_gram,
+        prefix_only,
+        &context.index,
+        tokenizer_name.as_str(),
+    ) {
         Err(err) => return set_error(&err.to_string(), error_buffer),
         _ => return
     };
@@ -136,7 +150,13 @@ pub extern "C" fn context_register_text_analyzer_edge_ngram(
         None => return
     };
 
-    register_edge_ngram_tokenizer(min_gram, max_gram, limit, &context.index, tokenizer_name.as_str());
+    register_edge_ngram_tokenizer(
+        min_gram,
+        max_gram,
+        limit,
+        &context.index,
+        tokenizer_name.as_str(),
+    );
 }
 
 #[logcall]
@@ -158,12 +178,12 @@ pub extern "C" fn context_register_text_analyzer_simple(
         None => return
     };
 
-    let lang = match assert_string(lang_str_ptr, error_buffer) {
+    let lang = match assert_str(lang_str_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    register_simple_tokenizer(text_limit, &context.index, tokenizer_name.as_str(), lang.as_str());
+    register_simple_tokenizer(text_limit, &context.index, tokenizer_name.as_str(), lang);
 }
 
 #[logcall]
@@ -216,7 +236,7 @@ pub extern "C" fn context_delete_documents(
         None => return
     };
 
-    let field_name = match assert_string(field_name_ptr, error_buffer) {
+    let field_name = match assert_str(field_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -254,7 +274,15 @@ pub extern "C" fn context_search(
         None => return ptr::null_mut()
     };
 
-    match search(field_names_ptr, field_names_len, query_ptr, error_buffer, docs_limit, context, with_highlights) {
+    match search(
+        field_names_ptr,
+        field_names_len,
+        query_ptr,
+        error_buffer,
+        docs_limit,
+        context,
+        with_highlights,
+    ) {
         Ok(value) => value,
         Err(_) => return ptr::null_mut()
     }
@@ -333,12 +361,12 @@ pub extern "C" fn document_add_field(
         None => return
     };
 
-    let field_name = match assert_string(field_name_ptr, error_buffer) {
+    let field_name = match assert_str(field_name_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    let field_value = match assert_string(field_value_ptr, error_buffer) {
+    let field_value = match assert_str(field_value_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
@@ -365,7 +393,13 @@ pub extern "C" fn document_as_json(
         None => return ptr::null_mut()
     };
 
-    let json = match convert_document_as_json(include_fields_ptr, include_fields_len, error_buffer, &doc, schema) {
+    let json = match convert_document_as_json(
+        include_fields_ptr,
+        include_fields_len,
+        error_buffer,
+        &doc,
+        schema,
+    ) {
         Ok(value) => value,
         Err(_) => return ptr::null_mut()
     };
@@ -401,11 +435,11 @@ pub extern "C" fn string_free(s: *mut c_char) {
 pub unsafe extern "C" fn init_lib(
     log_level_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
-    clear_on_panic: bool
+    clear_on_panic: bool,
 ) {
     let log_level = match assert_string(log_level_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
-    start_lib_init(log_level, clear_on_panic);
+    start_lib_init(log_level.as_str(), clear_on_panic);
 }

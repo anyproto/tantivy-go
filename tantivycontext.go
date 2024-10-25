@@ -5,10 +5,14 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 )
 
-type TantivyContext struct{ ptr *C.TantivyContext }
+type TantivyContext struct {
+	ptr  *C.TantivyContext
+	lock sync.Mutex // tantivy writer commits should be executed exclusively
+}
 
 // NewTantivyContextWithSchema creates a new instance of TantivyContext with the provided schema.
 //
@@ -39,6 +43,8 @@ func NewTantivyContextWithSchema(path string, schema *Schema) (*TantivyContext, 
 // Returns:
 //   - error: An error if adding and consuming the documents fails.
 func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 	if len(docs) == 0 {
 		return nil
 	}
@@ -48,6 +54,13 @@ func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
 		docsPtr[j] = doc.ptr
 	}
 	C.context_add_and_consume_documents(tc.ptr, &docsPtr[0], C.uintptr_t(len(docs)), &errBuffer)
+	for _, doc := range docs {
+		// Free the strings in the document
+		// This is necessary because the document is consumed by the index
+		// and the strings are not freed by the index
+		// We might clone strings on the Rust side to avoid that, but that would be inefficient
+		doc.FreeStrings()
+	}
 	return tryExtractError(errBuffer)
 }
 
@@ -60,6 +73,8 @@ func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
 // Returns:
 //   - error: An error if deleting the documents fails.
 func (tc *TantivyContext) DeleteDocuments(field string, deleteIds ...string) error {
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 	if len(deleteIds) == 0 {
 		return nil
 	}
