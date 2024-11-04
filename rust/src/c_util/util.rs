@@ -1,13 +1,13 @@
 use std::{fs, panic, slice};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_float};
 use std::path::Path;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 use log::debug;
 use serde_json::json;
-use tantivy::{Index, IndexWriter, TantivyDocument, TantivyError, Term};
+use tantivy::{Index, IndexWriter, Score, TantivyDocument, TantivyError, Term};
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{QueryParser};
 use tantivy::schema::{Field, Schema};
@@ -126,6 +126,30 @@ where
         };
 
         if func(value).is_err() {
+            return Err(());
+        }
+    }
+
+    Ok(())
+}
+
+pub fn process_slice<'a, F, T>(
+    ptr: *mut T,
+    error_buffer: *mut *mut c_char,
+    len: usize,
+    mut func: F,
+) -> Result<(), ()>
+where
+    F: FnMut(T) -> Result<(), ()>,
+    T: Copy,
+{
+    let slice = match assert_pointer(ptr, error_buffer) {
+        Some(ptr) => unsafe { slice::from_raw_parts(ptr, len) },
+        None => return Err(()),
+    };
+
+    for item in slice {
+        if func(*item).is_err() {
             return Err(());
         }
     }
@@ -350,6 +374,7 @@ pub fn add_field(
 
 pub fn search(
     field_names_ptr: *mut *const c_char,
+    field_weights_ptr: *mut c_float,
     field_names_len: usize,
     query_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
@@ -372,12 +397,26 @@ pub fn search(
         return Err(());
     }
 
+    let mut weights = HashMap::with_capacity(field_names_len);
+
+    let iter = 0;
+    if process_slice(field_weights_ptr, error_buffer, field_names_len, |field_weight| {
+        weights.insert(fields[iter], field_weight);
+        debug!("weights azaza: {:?}", weights);
+        Ok(())
+    }).is_err() {
+        return Err(());
+    }
+
     let query = match assert_string(query_ptr, error_buffer) {
         Some(value) => value,
         None => return Err(())
     };
 
-    let query_parser = QueryParser::for_index(&context.index, fields);
+    let mut query_parser = QueryParser::for_index(&context.index, fields);
+    for (field, weight) in weights {
+        query_parser.set_field_boost(field, weight as Score);
+    }
 
     let query = match query_parser.parse_query(query.as_str()) {
         Ok(query) => query,

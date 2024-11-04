@@ -120,11 +120,12 @@ func (tc *TantivyContext) NumDocs() (uint64, error) {
 // Returns:
 //   - *SearchResult: A pointer to the SearchResult containing the search results.
 //   - error: An error if the search fails.
-func (tc *TantivyContext) Search(query string, docsLimit uintptr, withHighlights bool, fieldNames ...string) (*SearchResult, error) {
+func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
+	fieldNames, weights := sCtx.GetFieldWeights()
 	if len(fieldNames) == 0 {
 		return nil, fmt.Errorf("fieldNames must not be empty")
 	}
-	cQuery := C.CString(query)
+	cQuery := C.CString(sCtx.GetQuery())
 	defer C.string_free(cQuery)
 
 	fieldNamesPtr := make([]*C.char, len(fieldNames))
@@ -134,15 +135,21 @@ func (tc *TantivyContext) Search(query string, docsLimit uintptr, withHighlights
 		fieldNamesPtr[j] = cId
 	}
 
+	fieldWeightsPtr := make([]C.float, len(fieldNames))
+	for j, weight := range weights {
+		fieldWeightsPtr[j] = C.float(weight)
+	}
+
 	var errBuffer *C.char
 	ptr := C.context_search(
 		tc.ptr,
 		(**C.char)(unsafe.Pointer(&fieldNamesPtr[0])),
+		(*C.float)(unsafe.Pointer(&fieldWeightsPtr[0])),
 		C.uintptr_t(len(fieldNames)),
 		cQuery,
 		&errBuffer,
-		pointerCType(docsLimit),
-		C.bool(withHighlights),
+		pointerCType(sCtx.GetDocsLimit()),
+		C.bool(sCtx.WithHighlights()),
 	)
 	if ptr == nil {
 		defer C.string_free(errBuffer)

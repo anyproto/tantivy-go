@@ -73,6 +73,7 @@ uint64_t context_num_docs(struct TantivyContext *context_ptr, char **error_buffe
 
 struct SearchResult *context_search(struct TantivyContext *context_ptr,
                                     const char **field_names_ptr,
+                                    float *field_weights_ptr,
                                     uintptr_t field_names_len,
                                     const char *query_ptr,
                                     char **error_buffer,

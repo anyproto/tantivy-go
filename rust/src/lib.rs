@@ -1,5 +1,5 @@
 use std::ffi::CString;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_float};
 use std::ptr;
 use logcall::logcall;
 use tantivy::{schema::*};
@@ -284,6 +284,7 @@ pub extern "C" fn context_num_docs(
 pub extern "C" fn context_search(
     context_ptr: *mut TantivyContext,
     field_names_ptr: *mut *const c_char,
+    field_weights_ptr: *mut c_float,
     field_names_len: usize,
     query_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
@@ -297,6 +298,7 @@ pub extern "C" fn context_search(
 
     match search(
         field_names_ptr,
+        field_weights_ptr,
         field_names_len,
         query_ptr,
         error_buffer,
