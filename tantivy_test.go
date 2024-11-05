@@ -437,7 +437,7 @@ func Test(t *testing.T) {
 		sCtx := tantivy_go.NewSearchContextBuilder().
 			SetQuery("apple").
 			SetDocsLimit(100).
-			SetWithHighlights(false).
+			SetWithHighlights(true).
 			AddField(NameTitle, 1.0).
 			AddField(NameBody, 1.0).
 			Build()
