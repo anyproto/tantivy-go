@@ -112,16 +112,14 @@ func (tc *TantivyContext) NumDocs() (uint64, error) {
 // Search performs a search query on the index and returns the search results.
 //
 // Parameters:
-//   - query (string): The search query string.
-//   - docsLimit (uintptr): The maximum number of documents to return.
-//   - withHighlights (bool): Whether to include highlights in the results.
-//   - fieldNames (...string): The names of the fields to be included in the search.
+//   - sCtx (SearchContext): The context for the search, containing query string,
+//     document limit, highlight option, and field weights.
 //
 // Returns:
 //   - *SearchResult: A pointer to the SearchResult containing the search results.
 //   - error: An error if the search fails.
 func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
-	fieldNames, weights := sCtx.GetFieldWeights()
+	fieldNames, weights := sCtx.GetFieldAndWeights()
 	if len(fieldNames) == 0 {
 		return nil, fmt.Errorf("fieldNames must not be empty")
 	}

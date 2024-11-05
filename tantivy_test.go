@@ -15,8 +15,8 @@ import (
 const NameBody = "body"
 const NameId = "id"
 const NameTitle = "title"
-const NameBodyCh = "bodyCh"
-const NameTitleCh = "titleCh"
+const NameBodyZh = "bodyCh"
+const NameTitleZh = "titleCh"
 
 const limit = 40
 const minGram = 2
@@ -51,7 +51,14 @@ func Test(t *testing.T) {
 		err = tc.AddAndConsumeDocuments(doc)
 		require.NoError(t, err)
 
-		result, err := tc.Search("body", 100, true, NameBody)
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("body").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameBody).
+			Build()
+
+		result, err := tc.Search(sCtx)
 		require.NoError(t, err)
 
 		size, err := result.GetSize()
@@ -177,14 +184,26 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), docs)
 
-		result, err := tc.Search("ย", 100, true, NameTitle)
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("ย").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+		result, err := tc.Search(sCtx)
 		require.NoError(t, err)
 
 		size, err := result.GetSize()
 		defer result.Free()
 		require.Equal(t, 0, int(size))
 
-		result2, err := tc.Search("ย่", 100, true, NameTitle)
+		sCtx2 := tantivy_go.NewSearchContextBuilder().
+			SetQuery("ย่").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+		result2, err := tc.Search(sCtx2)
 		require.NoError(t, err)
 
 		size2, err := result2.GetSize()
@@ -217,28 +236,52 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), docs)
 
-		result, err := tc.Search("Idées fête", 100, true, NameTitle)
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("Idées fête").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+		result, err := tc.Search(sCtx)
 		require.NoError(t, err)
 
 		size, err := result.GetSize()
 		defer result.Free()
 		require.Equal(t, 1, int(size))
 
-		result2, err := tc.Search("idees fete", 100, true, NameTitle)
+		sCtx2 := tantivy_go.NewSearchContextBuilder().
+			SetQuery("idees fete").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+		result2, err := tc.Search(sCtx2)
 		require.NoError(t, err)
 
 		size2, err := result2.GetSize()
 		defer result2.Free()
 		require.Equal(t, 1, int(size2))
 
-		result3, err := tc.Search("straße", 100, true, NameBody)
+		sCtx3 := tantivy_go.NewSearchContextBuilder().
+			SetQuery("straße").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameBody).
+			Build()
+		result3, err := tc.Search(sCtx3)
 		require.NoError(t, err)
 
 		size3, err := result3.GetSize()
 		defer result3.Free()
 		require.Equal(t, 1, int(size3))
 
-		result4, err := tc.Search("strasse", 100, true, NameBody)
+		sCtx4 := tantivy_go.NewSearchContextBuilder().
+			SetQuery("strasse").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameBody).
+			Build()
+		result4, err := tc.Search(sCtx4)
 		require.NoError(t, err)
 
 		size4, err := result4.GetSize()
@@ -261,7 +304,13 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), docs)
 
-		result, err := tc.Search("1", 100, true, NameId)
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("1").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameId).
+			Build()
+		result, err := tc.Search(sCtx)
 		require.NoError(t, err)
 
 		size, err := result.GetSize()
@@ -285,7 +334,13 @@ func Test(t *testing.T) {
 		err = tc.AddAndConsumeDocuments(doc)
 		require.NoError(t, err)
 
-		result, err := tc.Search("create", 100, true, NameTitle)
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("create").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+		result, err := tc.Search(sCtx)
 		require.NoError(t, err)
 
 		size, err := result.GetSize()
@@ -346,12 +401,76 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), docs)
 
-		result, err := tc.Search("售货员", 100, true, NameBodyCh, NameTitleCh)
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("售货员").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameBodyZh).
+			AddFieldDefaultWeight(NameTitleZh).
+			Build()
+		result, err := tc.Search(sCtx)
 		require.NoError(t, err)
 
 		size, err := result.GetSize()
 		defer result.Free()
 		require.Equal(t, 2, int(size))
+	})
+
+	t.Run("docs search - when weights apply", func(t *testing.T) {
+		schema, tc := fx(t, limit, 1, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "an apple", "", "id1", tc)
+		require.NoError(t, err)
+
+		doc2, err := addDoc(t, "", "an apple", "id2", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc, doc2)
+		require.NoError(t, err)
+
+		docs, err := tc.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), docs)
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("apple").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddField(NameTitle, 1.0).
+			AddField(NameBody, 1.0).
+			Build()
+		result, err := tc.Search(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		defer result.Free()
+		require.Equal(t, 2, int(size))
+		resDoc, err := result.Get(0)
+		require.NoError(t, err)
+		jsonStr, err := resDoc.ToJson(schema, NameId)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"highlights":[],"id":"id1","score":1.9676434993743896}`, jsonStr)
+
+		sCtx2 := tantivy_go.NewSearchContextBuilder().
+			SetQuery("apple").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddField(NameTitle, 1.0).
+			AddField(NameBody, 10.0).
+			Build()
+		result2, err := tc.Search(sCtx2)
+		require.NoError(t, err)
+
+		size2, err := result2.GetSize()
+		defer result2.Free()
+		require.Equal(t, 2, int(size2))
+		resDoc2, err := result2.Get(0)
+		require.NoError(t, err)
+		jsonStr2, err := resDoc2.ToJson(schema, NameId)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"highlights":[],"id":"id2","score":4.919108867645264}`, jsonStr2)
 	})
 }
 
@@ -367,7 +486,7 @@ func addDoc(
 	err := doc.AddField(NameTitle, title, tc)
 	require.NoError(t, err)
 
-	err = doc.AddField(NameTitleCh, title, tc)
+	err = doc.AddField(NameTitleZh, title, tc)
 	require.NoError(t, err)
 
 	err = doc.AddField(NameId, id, tc)
@@ -376,7 +495,7 @@ func addDoc(
 	err = doc.AddField(NameBody, body, tc)
 	require.NoError(t, err)
 
-	err = doc.AddField(NameBodyCh, body, tc)
+	err = doc.AddField(NameBodyZh, body, tc)
 	return doc, err
 }
 
@@ -402,7 +521,7 @@ func fx(
 	require.NoError(t, err)
 
 	err = builder.AddTextField(
-		NameTitleCh,
+		NameTitleZh,
 		true,
 		true,
 		false,
@@ -432,7 +551,7 @@ func fx(
 	require.NoError(t, err)
 
 	err = builder.AddTextField(
-		NameBodyCh,
+		NameBodyZh,
 		true,
 		true,
 		false,

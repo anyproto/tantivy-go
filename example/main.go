@@ -139,7 +139,7 @@ func main() {
 		SetQuery("body").
 		SetDocsLimit(100).
 		SetWithHighlights(true).
-		AddFieldWithoutWeight(NameBody).
+		AddFieldDefaultWeight(NameBody).
 		Build()
 
 	result, err := index.Search(sCtx)

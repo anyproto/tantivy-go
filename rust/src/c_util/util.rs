@@ -140,7 +140,7 @@ pub fn process_slice<'a, F, T>(
     mut func: F,
 ) -> Result<(), ()>
 where
-    F: FnMut(T) -> Result<(), ()>,
+    F: FnMut(usize, T) -> Result<(), ()>,
     T: Copy,
 {
     let slice = match assert_pointer(ptr, error_buffer) {
@@ -148,8 +148,8 @@ where
         None => return Err(()),
     };
 
-    for item in slice {
-        if func(*item).is_err() {
+    for (i, item) in slice.iter().enumerate() {
+        if func(i, *item).is_err() {
             return Err(());
         }
     }
@@ -307,10 +307,10 @@ pub fn delete_docs(
 
     let field = match schema_apply_for_field::<Field, (), _>
         (error_buffer, schema.clone(), field_name, |field, _|
-        match get_string_field_entry(schema.clone(), field) {
-            Ok(value) => Ok(value),
-            Err(_) => Err(())
-        },
+            match get_string_field_entry(schema.clone(), field) {
+                Ok(value) => Ok(value),
+                Err(_) => Err(())
+            },
         ) {
         Ok(value) => value,
         Err(_) => {
@@ -399,10 +399,8 @@ pub fn search(
 
     let mut weights = HashMap::with_capacity(field_names_len);
 
-    let iter = 0;
-    if process_slice(field_weights_ptr, error_buffer, field_names_len, |field_weight| {
-        weights.insert(fields[iter], field_weight);
-        debug!("weights azaza: {:?}", weights);
+    if process_slice(field_weights_ptr, error_buffer, field_names_len, |i, field_weight| {
+        weights.insert(fields[i], field_weight);
         Ok(())
     }).is_err() {
         return Err(());

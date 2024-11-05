@@ -1,7 +1,5 @@
 package tantivy_go
 
-import "fmt"
-
 // SearchContext defines the interface for searchContext
 type SearchContext interface {
 	// GetQuery returns the search query string.
@@ -10,8 +8,8 @@ type SearchContext interface {
 	GetDocsLimit() uintptr
 	// WithHighlights returns true if highlights are enabled.
 	WithHighlights() bool
-	// GetFieldWeights returns slices of field names and their corresponding weights.
-	GetFieldWeights() ([]string, []float32)
+	// GetFieldAndWeights returns slices of field names and their corresponding weights.
+	GetFieldAndWeights() ([]string, []float32)
 }
 
 // searchContext is a structure that implements SearchContext.
@@ -43,7 +41,7 @@ func (sc *searchContext) GetFieldNames() map[string]float32 {
 }
 
 // GetFieldWeights returns slices of field names and their corresponding weights.
-func (sc *searchContext) GetFieldWeights() ([]string, []float32) {
+func (sc *searchContext) GetFieldAndWeights() ([]string, []float32) {
 	fields := make([]string, 0, len(sc.fieldNames))
 	weights := make([]float32, 0, len(sc.fieldNames))
 
@@ -93,8 +91,8 @@ func (b *SearchContextBuilder) AddField(field string, weight float32) *SearchCon
 	return b
 }
 
-// AddFieldWithoutWeight adds a field with a default weight of 1.0 to searchContext.
-func (b *SearchContextBuilder) AddFieldWithoutWeight(field string) *SearchContextBuilder {
+// AddFieldDefaultWeight adds a field with a default weight of 1.0 to searchContext.
+func (b *SearchContextBuilder) AddFieldDefaultWeight(field string) *SearchContextBuilder {
 	b.context.fieldNames[field] = 1.0
 	return b
 }
@@ -102,26 +100,4 @@ func (b *SearchContextBuilder) AddFieldWithoutWeight(field string) *SearchContex
 // Build returns the constructed searchContext as an interface.
 func (b *SearchContextBuilder) Build() SearchContext {
 	return b.context
-}
-
-// Example usage of the searchContext and SearchContextBuilder.
-func main() {
-	builder := NewSearchContextBuilder()
-	searchContext := builder.
-		SetQuery("example search query").
-		SetDocsLimit(10).
-		SetWithHighlights(true).
-		AddField("title", 1.5).
-		AddFieldWithoutWeight("description").
-		Build()
-
-	// Retrieve fields and weights
-	fields, weights := searchContext.GetFieldWeights()
-	fmt.Printf("Fields: %v\n", fields)
-	fmt.Printf("Weights: %v\n", weights)
-
-	// Additional information
-	fmt.Printf("searchContext Query: %s\n", searchContext.GetQuery())
-	fmt.Printf("Docs Limit: %d\n", searchContext.GetDocsLimit())
-	fmt.Printf("With Highlights: %t\n", searchContext.WithHighlights())
 }
