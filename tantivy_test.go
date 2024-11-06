@@ -1,7 +1,6 @@
 package tantivy_go_test
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"os"
 	"testing"
@@ -84,7 +83,7 @@ func Test(t *testing.T) {
 						NameBody,
 						Fragment{
 							[][2]int{{8, 12}},
-							base64.StdEncoding.EncodeToString([]byte("Example body doing")),
+							"Example body doing",
 						},
 					}},
 			},
@@ -366,7 +365,7 @@ func Test(t *testing.T) {
 						NameTitle,
 						Fragment{
 							[][2]int{{0, 2}, {0, 3}, {0, 4}},
-							base64.StdEncoding.EncodeToString([]byte("Crea")),
+							"Crea",
 						},
 					}},
 			},
