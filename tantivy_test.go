@@ -14,8 +14,8 @@ import (
 const NameBody = "body"
 const NameId = "id"
 const NameTitle = "title"
-const NameBodyZh = "bodyCh"
-const NameTitleZh = "titleCh"
+const NameBodyZh = "bodyZh"
+const NameTitleZh = "titleZh"
 
 const limit = 40
 const minGram = 2

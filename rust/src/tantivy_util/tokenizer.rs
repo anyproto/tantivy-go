@@ -43,6 +43,8 @@ pub fn register_simple_tokenizer(
     register_tokenizer(index, tokenizer_name, text_analyzer);
 }
 
+
+#[cfg(feature = "jieba")]
 pub fn register_jieba_tokenizer(
     text_limit: usize,
     index: &Index,
@@ -55,6 +57,15 @@ pub fn register_jieba_tokenizer(
         .build();
 
     register_tokenizer(index, tokenizer_name, text_analyzer);
+}
+
+#[cfg(not(feature = "jieba"))]
+pub fn register_jieba_tokenizer(
+    text_limit: usize,
+    index: &Index,
+    tokenizer_name: &str,
+) {
+    panic!("Jieba support not compiled in")
 }
 
 pub fn register_raw_tokenizer(index: &Index, tokenizer_name: &str) {

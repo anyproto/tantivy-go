@@ -1,8 +1,7 @@
-use log::debug;
-use tantivy::query::Query;
-use tantivy::{Searcher, SnippetGenerator, TantivyDocument, TantivyError};
-use tantivy::schema::Schema;
 use crate::tantivy_util::{Fragment, Highlight};
+use tantivy::query::Query;
+use tantivy::schema::Schema;
+use tantivy::{Searcher, SnippetGenerator, TantivyDocument, TantivyError};
 
 pub fn find_highlights(
     with_highlights: bool,
