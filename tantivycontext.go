@@ -112,19 +112,18 @@ func (tc *TantivyContext) NumDocs() (uint64, error) {
 // Search performs a search query on the index and returns the search results.
 //
 // Parameters:
-//   - query (string): The search query string.
-//   - docsLimit (uintptr): The maximum number of documents to return.
-//   - withHighlights (bool): Whether to include highlights in the results.
-//   - fieldNames (...string): The names of the fields to be included in the search.
+//   - sCtx (SearchContext): The context for the search, containing query string,
+//     document limit, highlight option, and field weights.
 //
 // Returns:
 //   - *SearchResult: A pointer to the SearchResult containing the search results.
 //   - error: An error if the search fails.
-func (tc *TantivyContext) Search(query string, docsLimit uintptr, withHighlights bool, fieldNames ...string) (*SearchResult, error) {
+func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
+	fieldNames, weights := sCtx.GetFieldAndWeights()
 	if len(fieldNames) == 0 {
 		return nil, fmt.Errorf("fieldNames must not be empty")
 	}
-	cQuery := C.CString(query)
+	cQuery := C.CString(sCtx.GetQuery())
 	defer C.string_free(cQuery)
 
 	fieldNamesPtr := make([]*C.char, len(fieldNames))
@@ -134,15 +133,21 @@ func (tc *TantivyContext) Search(query string, docsLimit uintptr, withHighlights
 		fieldNamesPtr[j] = cId
 	}
 
+	fieldWeightsPtr := make([]C.float, len(fieldNames))
+	for j, weight := range weights {
+		fieldWeightsPtr[j] = C.float(weight)
+	}
+
 	var errBuffer *C.char
 	ptr := C.context_search(
 		tc.ptr,
 		(**C.char)(unsafe.Pointer(&fieldNamesPtr[0])),
+		(*C.float)(unsafe.Pointer(&fieldWeightsPtr[0])),
 		C.uintptr_t(len(fieldNames)),
 		cQuery,
 		&errBuffer,
-		pointerCType(docsLimit),
-		C.bool(withHighlights),
+		pointerCType(sCtx.GetDocsLimit()),
+		C.bool(sCtx.WithHighlights()),
 	)
 	if ptr == nil {
 		defer C.string_free(errBuffer)
@@ -209,6 +214,23 @@ func (tc *TantivyContext) RegisterTextAnalyzerSimple(tokenizerName string, textL
 	defer C.string_free(cLang)
 	var errBuffer *C.char
 	C.context_register_text_analyzer_simple(tc.ptr, cTokenizerName, C.uintptr_t(textLimit), cLang, &errBuffer)
+
+	return tryExtractError(errBuffer)
+}
+
+// RegisterTextAnalyzerJieba registers a jieba text analyzer with the index.
+//
+// Parameters:
+//   - tokenizerName (string): The name of the tokenizer to be used.
+//   - textLimit (uintptr): The limit on the length of the text to be analyzed.
+//
+// Returns:
+//   - error: An error if the registration fails.
+func (tc *TantivyContext) RegisterTextAnalyzerJieba(tokenizerName string, textLimit uintptr) error {
+	cTokenizerName := C.CString(tokenizerName)
+	defer C.string_free(cTokenizerName)
+	var errBuffer *C.char
+	C.context_register_jieba_tokenizer(tc.ptr, cTokenizerName, C.uintptr_t(textLimit), &errBuffer)
 
 	return tryExtractError(errBuffer)
 }

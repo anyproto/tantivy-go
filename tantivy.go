@@ -22,6 +22,7 @@ import (
 
 const TokenizerSimple = "simple"
 const TokenizerNgram = "ngram"
+const TokenizerJieba = "jieba"
 const TokenizerEdgeNgram = "edge_ngram"
 const TokenizerRaw = "raw"
 

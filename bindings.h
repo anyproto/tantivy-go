@@ -49,6 +49,11 @@ void context_register_text_analyzer_simple(struct TantivyContext *context_ptr,
                                            const char *lang_str_ptr,
                                            char **error_buffer);
 
+void context_register_jieba_tokenizer(struct TantivyContext *context_ptr,
+                                      const char *tokenizer_name_ptr,
+                                      uintptr_t text_limit,
+                                      char **error_buffer);
+
 void context_register_text_analyzer_raw(struct TantivyContext *context_ptr,
                                         const char *tokenizer_name_ptr,
                                         char **error_buffer);
@@ -68,6 +73,7 @@ uint64_t context_num_docs(struct TantivyContext *context_ptr, char **error_buffe
 
 struct SearchResult *context_search(struct TantivyContext *context_ptr,
                                     const char **field_names_ptr,
+                                    float *field_weights_ptr,
                                     uintptr_t field_names_len,
                                     const char *query_ptr,
                                     char **error_buffer,

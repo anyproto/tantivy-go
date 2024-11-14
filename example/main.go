@@ -135,7 +135,14 @@ func main() {
 	}
 
 	// Search index
-	result, err := index.Search("body", 100, true, NameBody)
+	sCtx := tantivy_go.NewSearchContextBuilder().
+		SetQuery("body").
+		SetDocsLimit(100).
+		SetWithHighlights(true).
+		AddFieldDefaultWeight(NameBody).
+		Build()
+
+	result, err := index.Search(sCtx)
 	if err != nil {
 		fmt.Println("Failed to search index:", err)
 		return

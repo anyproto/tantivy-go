@@ -1,11 +1,11 @@
 use std::ffi::CString;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_float};
 use std::ptr;
 use logcall::logcall;
 use tantivy::{schema::*};
 
 use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_str, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, set_error, start_lib_init};
-use crate::tantivy_util::{add_text_field, Document, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, SearchResult, TantivyContext};
+use crate::tantivy_util::{add_text_field, Document, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, register_jieba_tokenizer, SearchResult, TantivyContext};
 
 mod tantivy_util;
 mod c_util;
@@ -188,6 +188,27 @@ pub extern "C" fn context_register_text_analyzer_simple(
 
 #[logcall]
 #[no_mangle]
+pub extern "C" fn context_register_jieba_tokenizer(
+    context_ptr: *mut TantivyContext,
+    tokenizer_name_ptr: *const c_char,
+    text_limit: usize,
+    error_buffer: *mut *mut c_char,
+) {
+    let context = match assert_pointer(context_ptr, error_buffer) {
+        Some(value) => value,
+        None => return
+    };
+
+    let tokenizer_name = match assert_string(tokenizer_name_ptr, error_buffer) {
+        Some(value) => value,
+        None => return
+    };
+
+    register_jieba_tokenizer(text_limit, &context.index, tokenizer_name.as_str());
+}
+
+#[logcall]
+#[no_mangle]
 pub extern "C" fn context_register_text_analyzer_raw(
     context_ptr: *mut TantivyContext,
     tokenizer_name_ptr: *const c_char,
@@ -263,6 +284,7 @@ pub extern "C" fn context_num_docs(
 pub extern "C" fn context_search(
     context_ptr: *mut TantivyContext,
     field_names_ptr: *mut *const c_char,
+    field_weights_ptr: *mut c_float,
     field_names_len: usize,
     query_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
@@ -276,6 +298,7 @@ pub extern "C" fn context_search(
 
     match search(
         field_names_ptr,
+        field_weights_ptr,
         field_names_len,
         query_ptr,
         error_buffer,

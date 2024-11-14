@@ -1,9 +1,7 @@
-use base64::Engine;
-use base64::engine::general_purpose;
-use tantivy::query::Query;
-use tantivy::{Searcher, SnippetGenerator, TantivyDocument, TantivyError};
-use tantivy::schema::Schema;
 use crate::tantivy_util::{Fragment, Highlight};
+use tantivy::query::Query;
+use tantivy::schema::Schema;
+use tantivy::{Searcher, SnippetGenerator, TantivyDocument, TantivyError};
 
 pub fn find_highlights(
     with_highlights: bool,
@@ -24,14 +22,13 @@ pub fn find_highlights(
                 .filter_map(|highlight| {
                     if highlight.is_empty() { None } else { Some((highlight.start, highlight.end)) }
                 }).collect();
-
             if highlighted.is_empty() {
                 continue;
             }
             highlights.push(Highlight {
                 field_name: schema.get_field_name(field_value.field).to_string(),
                 fragment: Fragment {
-                    t: general_purpose::STANDARD.encode(&snippet.fragment().to_owned()), //to comply with bleve temporarily
+                    t: snippet.fragment().to_owned(),
                     r: highlighted,
                 },
             });
