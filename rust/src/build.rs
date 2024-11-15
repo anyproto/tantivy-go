@@ -8,8 +8,7 @@ use std::io::{self, Write};
 const FILE_PATH: &str = "../bindings.h";
 
 fn add_typedefs() -> io::Result<()> {
-
-    let include = "#include <binding_typedefs.h>\n";
+    let include = "#include \"binding_typedefs.h\"\n";
 
     let mut existing_content = fs::read_to_string(FILE_PATH)?;
 

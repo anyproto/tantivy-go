@@ -2,6 +2,7 @@ package tantivy_go_test
 
 import (
 	"encoding/json"
+	"github.com/anyproto/tantivy-go/internal"
 	"os"
 	"testing"
 
@@ -39,8 +40,8 @@ type Highlight struct {
 
 func Test(t *testing.T) {
 
-	t.Run("docs search and remove - when by raw Id", func(t *testing.T) {
-		schema, tc := fx(t, limit, minGram, false)
+	t.Run("docs search and remove - when by part of body", func(t *testing.T) {
+		schema, tc := fx(t, limit, minGram, false, false)
 
 		defer tc.Free()
 
@@ -101,7 +102,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs remove - when by body token", func(t *testing.T) {
-		_, tc := fx(t, limit, minGram, false)
+		_, tc := fx(t, limit, minGram, false, false)
 
 		defer tc.Free()
 
@@ -124,7 +125,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs remove - when by wrong body token", func(t *testing.T) {
-		_, tc := fx(t, limit, minGram, false)
+		_, tc := fx(t, limit, minGram, false, false)
 
 		defer tc.Free()
 
@@ -147,7 +148,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs remove - when by proper token and wrong field length", func(t *testing.T) {
-		_, tc := fx(t, 1, minGram, false)
+		_, tc := fx(t, 1, minGram, false, false)
 
 		defer tc.Free()
 
@@ -169,7 +170,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search and remove - when thai", func(t *testing.T) {
-		_, tc := fx(t, limit, 1, false)
+		_, tc := fx(t, limit, 1, false, false)
 
 		defer tc.Free()
 
@@ -221,7 +222,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search - when ascii folding", func(t *testing.T) {
-		_, tc := fx(t, limit, 1, false)
+		_, tc := fx(t, limit, 1, false, false)
 
 		defer tc.Free()
 
@@ -289,7 +290,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search and remove - when fast", func(t *testing.T) {
-		_, tc := fx(t, limit, minGram, false)
+		_, tc := fx(t, limit, minGram, false, false)
 
 		defer tc.Free()
 
@@ -315,15 +316,97 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		defer result.Free()
 		require.Equal(t, 1, int(size))
+	})
 
-		err = tc.DeleteDocuments(NameId, "1")
-		docs, err = tc.NumDocs()
+	t.Run("err - when add field twice", func(t *testing.T) {
+		err := internal.LibInit(true, false, "debug")
+		assert.NoError(t, err)
+		builder, err := tantivy_go.NewSchemaBuilder()
 		require.NoError(t, err)
-		require.Equal(t, uint64(0), docs)
+
+		err = builder.AddTextField(
+			NameTitle,
+			true,
+			true,
+			false,
+			tantivy_go.IndexRecordOptionWithFreqsAndPositions,
+			tantivy_go.TokenizerEdgeNgram,
+		)
+		require.NoError(t, err)
+
+		err = builder.AddTextField(
+			NameTitle,
+			true,
+			true,
+			false,
+			tantivy_go.IndexRecordOptionWithFreqsAndPositions,
+			tantivy_go.TokenizerEdgeNgram,
+		)
+		require.Error(t, err)
+	})
+
+	t.Run("docs fix utf8 - wrong utf8 - when lenient", func(t *testing.T) {
+		schema, tc := fx(t, limit, minGram, false, true)
+
+		defer tc.Free()
+
+		invalidUtf8Hello := string([]byte{0x68, 0x65, 0x6c, 0x6c, 0x6f, 0xff})
+		doc, err := addDoc(t, "some", invalidUtf8Hello, "1", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		docs, err := tc.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), docs)
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("1").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameId).
+			Build()
+		result, err := tc.Search(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		require.Equal(t, 1, int(size))
+
+		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+			var doc DocSample
+			return doc, json.Unmarshal([]byte(jsonStr), &doc)
+		}, NameId, NameTitle, NameBody)
+		require.NoError(t, err)
+
+		require.Equal(t, len(results), int(size))
+
+		for next := range results {
+			model := results[next].(DocSample)
+			require.Equal(t, DocSample{
+				"some",
+				"1",
+				"hello�",
+				[]Highlight{},
+			},
+				model)
+		}
+	})
+
+	t.Run("docs fix utf8 - wrong utf8 - when not lenient", func(t *testing.T) {
+		_, tc := fx(t, limit, minGram, false, false)
+
+		defer tc.Free()
+
+		invalidUtf8Hello := string([]byte{0x68, 0x65, 0x6c, 0x6c, 0x6f, 0xff})
+		doc := tantivy_go.NewDocument()
+		err := doc.AddField(NameBody, invalidUtf8Hello, tc)
+
+		require.Error(t, err, "invalid utf-8 sequence of 1 bytes from index 5")
 	})
 
 	t.Run("docs search and remove - when title", func(t *testing.T) {
-		schema, tc := fx(t, limit, minGram, false)
+		schema, tc := fx(t, limit, minGram, false, false)
 
 		defer tc.Free()
 
@@ -383,7 +466,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search - when jieba", func(t *testing.T) {
-		_, tc := fx(t, limit, 1, false)
+		_, tc := fx(t, limit, 1, false, false)
 
 		defer tc.Free()
 
@@ -416,7 +499,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search - when weights apply", func(t *testing.T) {
-		schema, tc := fx(t, limit, 1, false)
+		schema, tc := fx(t, limit, 1, false, false)
 
 		defer tc.Free()
 
@@ -503,8 +586,9 @@ func fx(
 	limit uintptr,
 	minGram uintptr,
 	isFastId bool,
+	utf8Lenient bool,
 ) (*tantivy_go.Schema, *tantivy_go.TantivyContext) {
-	err := tantivy_go.LibInit(true, "debug")
+	err := internal.LibInit(true, utf8Lenient, "debug")
 	assert.NoError(t, err)
 	builder, err := tantivy_go.NewSchemaBuilder()
 	require.NoError(t, err)

@@ -7,8 +7,11 @@ import (
 )
 
 type (
-	SchemaBuilder struct{ ptr *C.SchemaBuilder }
-	Schema        struct{ ptr *C.Schema }
+	SchemaBuilder struct {
+		ptr        *C.SchemaBuilder
+		fieldNames map[string]struct{}
+	}
+	Schema struct{ ptr *C.Schema }
 )
 
 const (
@@ -50,7 +53,7 @@ func NewSchemaBuilder() (*SchemaBuilder, error) {
 	if ptr == nil {
 		return nil, errors.New("failed to create schema builder")
 	}
-	return &SchemaBuilder{ptr: ptr}, nil
+	return &SchemaBuilder{ptr: ptr, fieldNames: make(map[string]struct{})}, nil
 }
 
 // AddTextField adds a text field to the schema being built.
@@ -72,6 +75,10 @@ func (b *SchemaBuilder) AddTextField(
 	indexRecordOption int,
 	tokenizer string,
 ) error {
+	if _, contains := b.fieldNames[name]; contains {
+		return errors.New("field already defined: " + name)
+	}
+	b.fieldNames[name] = struct{}{}
 	cName := C.CString(name)
 	cTokenizer := C.CString(tokenizer)
 	defer C.string_free(cName)

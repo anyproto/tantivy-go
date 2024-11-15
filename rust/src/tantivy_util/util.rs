@@ -1,8 +1,9 @@
+use std::borrow::Cow;
 use tantivy::schema::OwnedValue;
 
-pub fn extract_text_from_owned_value(value: &OwnedValue) -> Option<&str> {
+pub fn extract_text_from_owned_value<'a>(value: &'a OwnedValue) -> Option<Cow<'a, str>> {
     match value {
-        OwnedValue::Str(text) => Some(text),
+        OwnedValue::Str(text) => Some(Cow::Borrowed(text)),
         _ => { None }
     }
 }
