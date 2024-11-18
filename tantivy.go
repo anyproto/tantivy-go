@@ -16,7 +16,7 @@ package tantivy_go
 */
 import "C"
 import (
-	"fmt"
+	"github.com/anyproto/tantivy-go/internal"
 	"sync"
 )
 
@@ -36,28 +36,10 @@ var doOnce sync.Once
 //
 // Returns:
 // - An error if the initialization fails.
-func LibInit(cleanOnPanic bool, directive ...string) error {
-	var initVal string
+func LibInit(cleanOnPanic, utf8Lenient bool, directive ...string) error {
 	var err error
 	doOnce.Do(func() {
-		if len(directive) == 0 {
-			initVal = "info"
-		} else {
-			initVal = directive[0]
-		}
-
-		cInitVal := C.CString(initVal)
-		defer C.string_free(cInitVal)
-		cCleanOnPanic := C.bool(cleanOnPanic)
-		var errBuffer *C.char
-		C.init_lib(cInitVal, &errBuffer, cCleanOnPanic)
-
-		errorMessage := C.GoString(errBuffer)
-		defer C.string_free(errBuffer)
-
-		if errorMessage != "" {
-			err = fmt.Errorf(errorMessage)
-		}
+		err = internal.LibInit(cleanOnPanic, utf8Lenient, directive...)
 	})
 	return err
 }

@@ -1,4 +1,4 @@
-#include <binding_typedefs.h>
+#include "binding_typedefs.h"
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -108,4 +108,7 @@ void document_free(struct Document *doc_ptr);
 
 void string_free(char *s);
 
-void init_lib(const char *log_level_ptr, char **error_buffer, bool clear_on_panic);
+void init_lib(const char *log_level_ptr,
+              char **error_buffer,
+              bool clear_on_panic,
+              bool utf8_lenient);

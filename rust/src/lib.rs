@@ -9,7 +9,7 @@ use crate::tantivy_util::{add_text_field, Document, register_edge_ngram_tokenize
 
 mod tantivy_util;
 mod c_util;
-
+mod config;
 #[logcall]
 #[no_mangle]
 pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
@@ -178,12 +178,12 @@ pub extern "C" fn context_register_text_analyzer_simple(
         None => return
     };
 
-    let lang = match assert_str(lang_str_ptr, error_buffer) {
+    let lang = match assert_string(lang_str_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
 
-    register_simple_tokenizer(text_limit, &context.index, tokenizer_name.as_str(), lang);
+    register_simple_tokenizer(text_limit, &context.index, tokenizer_name.as_str(), &lang);
 }
 
 #[logcall]
@@ -394,7 +394,7 @@ pub extern "C" fn document_add_field(
         None => return
     };
 
-    add_field(error_buffer, doc, &context.index, field_name, field_value);
+    add_field(error_buffer, doc, &context.index, field_name, &field_value);
 }
 
 #[logcall]
@@ -420,7 +420,7 @@ pub extern "C" fn document_as_json(
         include_fields_ptr,
         include_fields_len,
         error_buffer,
-        &doc,
+        doc,
         schema,
     ) {
         Ok(value) => value,
@@ -459,10 +459,11 @@ pub unsafe extern "C" fn init_lib(
     log_level_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
     clear_on_panic: bool,
+    utf8_lenient: bool,
 ) {
     let log_level = match assert_string(log_level_ptr, error_buffer) {
         Some(value) => value,
         None => return
     };
-    start_lib_init(log_level.as_str(), clear_on_panic);
+    start_lib_init(log_level.as_str(), clear_on_panic, utf8_lenient);
 }
