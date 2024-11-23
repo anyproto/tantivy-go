@@ -157,6 +157,39 @@ func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
 	return &SearchResult{ptr: ptr}, nil
 }
 
+// SearchV2 performs a simplified search query on the index and returns the search results.
+//
+// Parameters:
+//   - sCtx (SearchContext): The context for the search, containing query string,
+//     document limit, and highlight option.
+//
+// Returns:
+//   - *SearchResult: A pointer to the SearchResult containing the search results.
+//   - error: An error if the search fails.
+func (tc *TantivyContext) SearchV2(sCtx SearchContext) (*SearchResult, error) {
+	// Ensure the query is valid
+	cQuery := C.CString(sCtx.GetQuery())
+	defer C.string_free(cQuery)
+
+	// Prepare the error buffer
+	var errBuffer *C.char
+
+	// Call the C function
+	ptr := C.context_search2(
+		tc.ptr,
+		cQuery,
+		&errBuffer,
+		pointerCType(sCtx.GetDocsLimit()),
+		C.bool(sCtx.WithHighlights()),
+	)
+	if ptr == nil {
+		defer C.string_free(errBuffer)
+		return nil, errors.New(C.GoString(errBuffer))
+	}
+
+	return &SearchResult{ptr: ptr}, nil
+}
+
 func (tc *TantivyContext) Free() {
 	C.context_free(tc.ptr)
 }

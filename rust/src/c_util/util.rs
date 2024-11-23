@@ -1,16 +1,21 @@
-use std::{fs, panic, slice};
+use std::{fmt, fs, panic, slice};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_float};
 use std::panic::PanicInfo;
 use std::path::Path;
 use log::debug;
+use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::de::Visitor;
 use serde_json::json;
 use tantivy::{Index, IndexWriter, Score, TantivyDocument, TantivyError, Term};
 use tantivy::directory::MmapDirectory;
-use tantivy::query::{QueryParser};
+use tantivy::query::{BooleanQuery, Occur, PhraseQuery, Query, QueryParser};
+use tantivy::query_grammar::parse_query;
 use tantivy::schema::{Field, Schema};
+use crate::c_util::util::GoQuery::PhrasePrefixQuery;
 use crate::config;
 use crate::tantivy_util::{convert_document_to_json, Document, TantivyContext, DOCUMENT_BUDGET_BYTES, find_highlights, get_string_field_entry, SearchResult};
 
@@ -497,12 +502,462 @@ pub fn search(
         };
     }
 
-    let len = documents.len();
+    let size = documents.len();
     Ok(Box::into_raw(Box::new(SearchResult {
-        documents: documents,
-        size: len,
+        documents,
+        size,
     })))
 }
+
+pub fn search2(
+    query_ptr: *const c_char,
+    error_buffer: *mut *mut c_char,
+    docs_limit: usize,
+    context: &mut TantivyContext,
+    with_highlights: bool,
+) -> Result<*mut SearchResult,  Box<dyn Error>> {
+    let searcher = &context.reader().searcher();
+    let schema = context.index.schema();
+
+    let query = match assert_string(query_ptr, error_buffer) {
+        Some(value) => value,
+        None => return Err(Box::new(fmt::Error))
+    };
+    debug!("###1 {:?}", query);
+
+    let query = parse_query_from_json(&context.index, &schema, &query)?;
+    debug!("###2 {:?}", query);
+
+    let top_docs = match searcher.search(
+        &query,
+        &tantivy::collector::TopDocs::with_limit(docs_limit),
+    ) {
+        Ok(top_docs) => top_docs,
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            return Err(Box::new(fmt::Error));
+        }
+    };
+
+    let mut documents = Vec::new();
+    for (score, doc_address) in top_docs {
+        match searcher.doc::<TantivyDocument>(doc_address) {
+            Ok(doc) => {
+                let highlights = match find_highlights(
+                    with_highlights, &searcher, &query, &doc, schema.clone()) {
+                    Ok(highlights) => highlights,
+                    Err(err) => {
+                        set_error(&err.to_string(), error_buffer);
+                        return Err(Box::new(fmt::Error));
+                    }
+                };
+                documents.push(Document {
+                    tantivy_doc: doc,
+                    highlights,
+                    score: score,
+                });
+            }
+
+            Err(err) => {
+                set_error(&err.to_string(), error_buffer);
+                return Err(Box::new(fmt::Error));
+            }
+        };
+    }
+
+    let size = documents.len();
+    Ok(Box::into_raw(Box::new(SearchResult {
+        documents,
+        size,
+    })))
+}
+
+fn parse_query_from_json(
+    index: &Index,
+    schema: &Schema,
+    json: &str) -> Result<Box<dyn Query>, Box<dyn Error>> {
+    debug!("### 31 {:?}", json);
+    let parsed = serde_json::from_str(json)?;
+    debug!("### 32 {:?}", parsed);
+    convert_to_tantivy(index, parsed, schema)
+}
+
+// Convert your `QueryModifier` to Tantivy's `Occur`
+fn modifier_to_occur(modifier: &QueryModifier) -> Occur {
+    match modifier {
+        QueryModifier::Must => Occur::Must,
+        QueryModifier::Should => Occur::Should,
+        QueryModifier::MustNot => Occur::MustNot,
+    }
+}
+
+// Main conversion function
+fn convert_to_tantivy(
+    index: &Index,
+    parsed: FinalQuery,
+    schema: &Schema,
+) -> Result<Box<dyn Query>, Box<dyn Error>> {
+    // Validate the schema and ensure field mappings exist
+    if parsed.fields.is_empty() || parsed.texts.is_empty() {
+        return Err("Fields or texts cannot be empty".into());
+    }
+
+    // Recursive function to convert `QueryElement` to Tantivy's queries
+    fn element_to_query(
+        index: &Index,
+        element: &QueryElement,
+        schema: &Schema,
+        texts: &[String],
+        fields: &[String],
+    ) -> Result<(Occur, Box<dyn Query>), Box<dyn Error>> {
+
+        let occur = modifier_to_occur(&element.modifier);
+
+        if let Some(go_query) = &element.query {
+            match go_query {
+                GoQuery::PhraseQuery {
+                    field_index,
+                    text_index,
+                    boost: _,
+                } => {
+                    let field = fields.get(*field_index)
+                        .ok_or("Invalid field index in PhraseQuery")?;
+                    let text = texts.get(*text_index)
+                        .ok_or("Invalid text index in PhraseQuery")?;
+                    let field = schema.get_field(field)
+                        .or(Err("Invalid field name"))?;
+
+                    let terms =  exract_terms(&index, field, text)?;
+                    let phrase_query = PhraseQuery::new(terms);
+                    Ok((occur, Box::new(phrase_query)))
+                }
+
+                GoQuery::PhrasePrefixQuery {
+                    field_index,
+                    text_index,
+                    boost: _,
+                } => {
+                    let field = fields.get(*field_index)
+                        .ok_or("Invalid field index in PhraseQuery")?;
+                    let text = texts.get(*text_index)
+                        .ok_or("Invalid text index in PhraseQuery")?;
+                    let field = schema.get_field(field)
+                        .or(Err("Invalid field name"))?;
+
+                    let terms =  exract_terms(&index, field, text)?;
+                    let phrase_query = tantivy::query::PhrasePrefixQuery::new(terms);
+                    Ok((occur, Box::new(phrase_query)))
+                }
+
+                GoQuery::SingleTermPrefixQuery {
+                    field_index,
+                    text_index,
+                    boost: _,
+                } => {
+                    let field = fields.get(*field_index)
+                        .ok_or("Invalid field index in PhraseQuery")?;
+                    let text = texts.get(*text_index)
+                        .ok_or("Invalid text index in PhraseQuery")?;
+                    let field = schema.get_field(field)
+                        .or(Err("Invalid field name"))?;
+
+                    let terms =  exract_terms(&index, field, text)?;
+                    let phrase_query = tantivy::query::PhrasePrefixQuery::new(vec![terms[0].clone()]); //todo
+                    Ok((occur, Box::new(phrase_query)))
+                }
+
+                GoQuery::BoolQuery { subqueries } => {
+                    let mut sub_queries = vec![];
+                    for subquery in subqueries {
+                        sub_queries.push(element_to_query(index, subquery, schema, texts, fields)?);
+                    }
+                    let bool_query = BooleanQuery::from(sub_queries);
+                    Ok((occur, Box::new(bool_query)))
+                }
+                _ => Err("Unsupported GoQuery variant".into()),
+            }
+        } else {
+            Err("Query is None in QueryElement".into())
+        }
+    }
+    fn exract_terms(
+        index: &Index,
+        field: Field,
+        query: &str
+    ) -> Result<(Vec<Term>), Box<dyn Error>> {
+        let mut tokenizer = index.tokenizer_for_field(field)?;
+        let mut token_stream = tokenizer.token_stream(query);
+        let mut terms = Vec::new();
+        while token_stream.advance() {
+            terms.push(token_stream.token().text.clone());
+            //println!("### {}", token_stream.token().text); // Выводим текст каждого токена
+        }
+        let term_queries: Vec<Term> = terms
+            .iter()
+            .map(|term| Term::from_field_text(field, term))
+            .collect();
+        Ok(term_queries)
+    }
+
+    // Convert top-level BoolQuery
+    let mut sub_queries = vec![];
+    for subquery in &parsed.query.subqueries {
+        sub_queries.push(element_to_query(
+            index,
+            subquery,
+            schema,
+            &parsed.texts,
+            &parsed.fields,
+        )?);
+    }
+
+    let bool_query = BooleanQuery::from(sub_queries);
+    Ok(Box::new(bool_query))
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryType {
+    BoolQuery,
+    PhraseQuery,
+    PhrasePrefixQuery,
+    SingleTermPrefixQuery,
+    None,
+}
+
+impl QueryType {
+    fn from_u64(value: u64) -> Option<Self> {
+        match value {
+            0 => Some(QueryType::BoolQuery),
+            1 => Some(QueryType::PhraseQuery),
+            2 => Some(QueryType::PhrasePrefixQuery),
+            3 => Some(QueryType::SingleTermPrefixQuery),
+            _ => None,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for QueryType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct QueryTypeVisitor;
+
+        impl<'de> Visitor<'de> for QueryTypeVisitor {
+            type Value = QueryType;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                write!(formatter, "a number representing the QueryType")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                QueryType::from_u64(value).ok_or_else(|| E::invalid_value(de::Unexpected::Unsigned(value), &self))
+            }
+        }
+
+        deserializer.deserialize_u64(QueryTypeVisitor)
+    }
+}
+
+impl<'de> Deserialize<'de> for QueryModifier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct QueryModifierVisitor;
+
+        impl<'de> Visitor<'de> for QueryModifierVisitor {
+            type Value = QueryModifier;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                write!(formatter, "a number representing the QueryType")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                QueryModifier::from_u64(value).ok_or_else(|| E::invalid_value(de::Unexpected::Unsigned(value), &self))
+            }
+        }
+
+        deserializer.deserialize_u64(QueryModifierVisitor)
+    }
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryModifier {
+    Must,
+    Should,
+    MustNot,
+}
+
+impl QueryModifier {
+    fn from_u64(val: u64) -> Option<Self> {
+        match val {
+            0 =>  Some(QueryModifier::Must),
+            1 =>  Some(QueryModifier::Should),
+            2 =>  Some(QueryModifier::MustNot),
+            _ =>  None
+        }
+    }
+}
+
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum GoQuery {
+    BoolQuery {
+        subqueries: Vec<QueryElement>,
+    },
+    PhraseQuery {
+        field_index: usize,
+        text_index: usize,
+        boost: f64,
+    },
+    PhrasePrefixQuery {
+        field_index: usize,
+        text_index: usize,
+        boost: f64,
+    },
+    SingleTermPrefixQuery {
+        field_index: usize,
+        text_index: usize,
+        boost: f64,
+    },
+}
+
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub struct QueryElement {
+    pub query: Option<GoQuery>,
+    pub modifier: QueryModifier,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub struct BoolQuery {
+    pub subqueries: Vec<QueryElement>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub struct FinalQuery {
+    pub texts: Vec<String>,
+    pub fields: Vec<String>,
+    pub query: BoolQuery,
+}
+
+impl<'de> Deserialize<'de> for QueryElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Используем Value для начального этапа
+        let map: serde_json::Value = serde_json::Value::deserialize(deserializer)?;
+
+        // Десериализуем modifier как QueryModifier
+        let modifier = map
+            .get("query_modifier")
+            .ok_or_else(|| serde::de::Error::missing_field("query_modifier"))?
+            .as_u64()
+            .and_then(QueryModifier::from_u64)
+            .ok_or_else(|| serde::de::Error::custom("Invalid query_modifier"))?;
+
+        // Десериализуем query_type как QueryType
+        let query_type = map
+            .get("query_type")
+            .ok_or_else(|| serde::de::Error::missing_field("query_type"))?
+            .as_u64()
+            .and_then(QueryType::from_u64)
+            .ok_or_else(|| serde::de::Error::custom("Invalid query_type"))?;
+
+        // Обрабатываем поле query
+        let query = match query_type {
+            QueryType::BoolQuery => {
+                let subqueries = map
+                    .get("query")
+                    .and_then(|q| q.get("subqueries"))
+                    .ok_or_else(|| serde::de::Error::missing_field("subqueries"))?;
+                Some(GoQuery::BoolQuery {
+                    subqueries: serde_json::from_value(subqueries.clone())
+                        .map_err(serde::de::Error::custom)?,
+                })
+            }
+            QueryType::PhraseQuery => {
+                let query_data = map
+                    .get("query")
+                    .and_then(|q| q.as_object())
+                    .ok_or_else(|| serde::de::Error::missing_field("query"))?;
+                Some(GoQuery::PhraseQuery {
+                    field_index: query_data
+                        .get("field_index")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize,
+                    text_index: query_data
+                        .get("text_index")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize,
+                    boost: query_data
+                        .get("boost")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(1.0),
+                })
+            }
+            QueryType::PhrasePrefixQuery => {
+                let query_data = map
+                    .get("query")
+                    .and_then(|q| q.as_object())
+                    .ok_or_else(|| serde::de::Error::missing_field("query"))?;
+                Some(GoQuery::PhrasePrefixQuery {
+                    field_index: query_data
+                        .get("field_index")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize,
+                    text_index: query_data
+                        .get("text_index")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize,
+                    boost: query_data
+                        .get("boost")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(1.0),
+                })
+            }
+            QueryType::SingleTermPrefixQuery => {
+                let query_data = map
+                    .get("query")
+                    .and_then(|q| q.as_object())
+                    .ok_or_else(|| serde::de::Error::missing_field("query"))?;
+                Some(GoQuery::SingleTermPrefixQuery {
+                    field_index: query_data
+                        .get("field_index")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize,
+                    text_index: query_data
+                        .get("text_index")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize,
+                    boost: query_data
+                        .get("boost")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(1.0),
+                })
+            }
+            QueryType::None => None,
+        };
+
+        // Создаем и возвращаем QueryElement
+        Ok(QueryElement { query, modifier })
+    }
+}
+
 
 pub fn drop_any<T>(ptr: *mut T) {
     if !ptr.is_null() {

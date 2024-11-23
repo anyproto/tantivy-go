@@ -2,6 +2,7 @@ package tantivy_go_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/anyproto/tantivy-go/internal"
 	"os"
 	"testing"
@@ -496,6 +497,76 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		defer result.Free()
 		require.Equal(t, 2, int(size))
+	})
+
+	t.Run("azaza", func(t *testing.T) {
+		schema, tc := fx(t, limit, 1, false, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "an apple", "", "id1", tc)
+		require.NoError(t, err)
+
+		doc2, err := addDoc(t, "", "an apple", "id2", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc, doc2)
+		require.NoError(t, err)
+
+		docs, err := tc.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), docs)
+
+		qb := tantivy_go.NewQueryBuilder()
+
+		finalQuery := qb.
+			Query("title", "hello world", tantivy_go.PhraseQuery, 2.0, tantivy_go.Must).
+			Query("body", "specific term", tantivy_go.PhrasePrefixQuery, 1.0, tantivy_go.Should).
+			BooleanQuery(tantivy_go.Must, func(sub *tantivy_go.QueryBuilder) {
+				sub.
+					Query("summary", "another term", tantivy_go.PhrasePrefixQuery, 1.5, tantivy_go.Should).
+					BooleanQuery(tantivy_go.Should, func(nested *tantivy_go.QueryBuilder) {
+						nested.Query("comments", "deep term", tantivy_go.PhraseQuery, 0.8, tantivy_go.Must)
+					})
+			}).Build()
+		marshal, _ := json.Marshal(finalQuery)
+		fmt.Printf("### Final Query: %s\n", marshal)
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery(string(marshal)).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			Build()
+		result, err := tc.SearchV2(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		defer result.Free()
+		require.Equal(t, 2, int(size))
+		resDoc, err := result.Get(0)
+		require.NoError(t, err)
+		jsonStr, err := resDoc.ToJson(schema, NameId)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"highlights":[],"id":"id1","score":1.9676434993743896}`, jsonStr)
+
+		sCtx2 := tantivy_go.NewSearchContextBuilder().
+			SetQuery("apple").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddField(NameTitle, 1.0).
+			AddField(NameBody, 10.0).
+			Build()
+		result2, err := tc.Search(sCtx2)
+		require.NoError(t, err)
+
+		size2, err := result2.GetSize()
+		defer result2.Free()
+		require.Equal(t, 2, int(size2))
+		resDoc2, err := result2.Get(0)
+		require.NoError(t, err)
+		jsonStr2, err := resDoc2.ToJson(schema, NameId)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"highlights":[],"id":"id2","score":4.919108867645264}`, jsonStr2)
 	})
 
 	t.Run("docs search - when weights apply", func(t *testing.T) {
