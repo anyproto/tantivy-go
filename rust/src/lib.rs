@@ -4,12 +4,14 @@ use std::ptr;
 use logcall::logcall;
 use tantivy::{schema::*};
 
-use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_str, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, search2, set_error, start_lib_init};
+use crate::c_util::{add_and_consume_documents, add_field, assert_pointer, assert_str, assert_string, box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search, search_json, set_error, start_lib_init};
 use crate::tantivy_util::{add_text_field, Document, register_edge_ngram_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, register_jieba_tokenizer, SearchResult, TantivyContext};
 
 mod tantivy_util;
 mod c_util;
 mod config;
+mod queries;
+
 #[logcall]
 #[no_mangle]
 pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
@@ -313,7 +315,7 @@ pub extern "C" fn context_search(
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn context_search2(
+pub extern "C" fn context_search_json(
     context_ptr: *mut TantivyContext,
     query_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
@@ -325,7 +327,7 @@ pub extern "C" fn context_search2(
         None => return ptr::null_mut()
     };
 
-    match search2(
+    match search_json(
         query_ptr,
         error_buffer,
         docs_limit,

@@ -15,7 +15,7 @@ type QueryModifier int
 const (
 	Must QueryModifier = iota
 	Should
-	ShouldNot
+	MustNot
 )
 
 type FieldQuery struct {
@@ -76,7 +76,7 @@ func (qb *QueryBuilder) AddField(text string) int {
 	return idx
 }
 
-func (qb *QueryBuilder) Query(field string, text string, queryType QueryType, boost float64, modifier QueryModifier) *QueryBuilder {
+func (qb *QueryBuilder) Query(modifier QueryModifier, field string, text string, queryType QueryType, boost float64) *QueryBuilder {
 	textIndex := qb.AddText(text)
 	fieldIndex := qb.AddField(field)
 	qb.subqueries = append(qb.subqueries, QueryElement{
@@ -91,9 +91,7 @@ func (qb *QueryBuilder) Query(field string, text string, queryType QueryType, bo
 	return qb
 }
 
-func (qb *QueryBuilder) BooleanQuery(modifier QueryModifier, subqueryFn func(*QueryBuilder)) *QueryBuilder {
-	subBuilder := NewQueryBuilder()
-	subqueryFn(subBuilder)
+func (qb *QueryBuilder) BooleanQuery(modifier QueryModifier, subBuilder *QueryBuilder) *QueryBuilder {
 	qb.subqueries = append(qb.subqueries, QueryElement{
 		Query: &BooleanQuery{
 			Subqueries: subBuilder.subqueries,

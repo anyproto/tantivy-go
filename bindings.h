@@ -80,11 +80,11 @@ struct SearchResult *context_search(struct TantivyContext *context_ptr,
                                     uintptr_t docs_limit,
                                     bool with_highlights);
 
-struct SearchResult *context_search2(struct TantivyContext *context_ptr,
-                                     const char *query_ptr,
-                                     char **error_buffer,
-                                     uintptr_t docs_limit,
-                                     bool with_highlights);
+struct SearchResult *context_search_json(struct TantivyContext *context_ptr,
+                                         const char *query_ptr,
+                                         char **error_buffer,
+                                         uintptr_t docs_limit,
+                                         bool with_highlights);
 
 void context_free(struct TantivyContext *context_ptr);
 

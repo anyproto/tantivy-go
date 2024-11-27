@@ -12,7 +12,7 @@ pub use self::util::add_and_consume_documents;
 pub use self::util::delete_docs;
 pub use self::util::create_context_with_schema;
 pub use self::util::search;
-pub use self::util::search2;
+pub use self::util::search_json;
 pub use self::util::drop_any;
 pub use self::util::get_doc;
 pub use self::util::add_field;

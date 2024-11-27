@@ -1,5 +1,9 @@
 package tantivy_go
 
+import (
+	"encoding/json"
+)
+
 // SearchContext defines the interface for searchContext
 type SearchContext interface {
 	// GetQuery returns the search query string.
@@ -70,6 +74,13 @@ func NewSearchContextBuilder() *SearchContextBuilder {
 // SetQuery sets the query for searchContext.
 func (b *SearchContextBuilder) SetQuery(query string) *SearchContextBuilder {
 	b.context.query = query
+	return b
+}
+
+// SetQueryFromJson sets the query for searchContext.
+func (b *SearchContextBuilder) SetQueryFromJson(query *FinalQuery) *SearchContextBuilder {
+	queryJson, _ := json.Marshal(query)
+	b.context.query = string(queryJson)
 	return b
 }
 

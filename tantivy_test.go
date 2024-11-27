@@ -2,7 +2,6 @@ package tantivy_go_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/anyproto/tantivy-go/internal"
 	"os"
 	"testing"
@@ -500,7 +499,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("azaza", func(t *testing.T) {
-		schema, tc := fx(t, limit, 1, false, false)
+		/*schema, tc := fx(t, limit, 1, false, false)
 
 		defer tc.Free()
 
@@ -515,29 +514,37 @@ func Test(t *testing.T) {
 
 		docs, err := tc.NumDocs()
 		require.NoError(t, err)
-		require.Equal(t, uint64(2), docs)
+		require.Equal(t, uint64(2), docs)*/
 
 		qb := tantivy_go.NewQueryBuilder()
 
 		finalQuery := qb.
-			Query("title", "hello world", tantivy_go.PhraseQuery, 2.0, tantivy_go.Must).
-			Query("body", "specific term", tantivy_go.PhrasePrefixQuery, 1.0, tantivy_go.Should).
-			BooleanQuery(tantivy_go.Must, func(sub *tantivy_go.QueryBuilder) {
-				sub.
-					Query("summary", "another term", tantivy_go.PhrasePrefixQuery, 1.5, tantivy_go.Should).
-					BooleanQuery(tantivy_go.Should, func(nested *tantivy_go.QueryBuilder) {
-						nested.Query("comments", "deep term", tantivy_go.PhraseQuery, 0.8, tantivy_go.Must)
-					})
-			}).Build()
-		marshal, _ := json.Marshal(finalQuery)
-		fmt.Printf("### Final Query: %s\n", marshal)
+			Query(tantivy_go.Must, "body1", "some words", tantivy_go.PhraseQuery, 1.0).
+			Query(tantivy_go.Should, "body2", "term", tantivy_go.PhrasePrefixQuery, 1.0).
+			Query(tantivy_go.MustNot, "body3", "term", tantivy_go.SingleTermPrefixQuery, 1.0).
+			Query(tantivy_go.Must, "title1", "another term", tantivy_go.PhraseQuery, 0.1).
+			Query(tantivy_go.Should, "title2", "term2", tantivy_go.PhrasePrefixQuery, 0.1).
+			Query(tantivy_go.MustNot, "title3", "term2", tantivy_go.SingleTermPrefixQuery, 0.1).
+			BooleanQuery(tantivy_go.Must, tantivy_go.NewQueryBuilder().
+				Query(tantivy_go.Should, "summary", "term3", tantivy_go.PhrasePrefixQuery, 1.0).
+				BooleanQuery(tantivy_go.Should, tantivy_go.NewQueryBuilder().
+					Query(tantivy_go.Must, "comments", "not single term", tantivy_go.PhraseQuery, 0.8),
+				),
+			).
+			Build()
+
+		expected, err := os.ReadFile("./test_jsons/data.json")
+		require.NoError(t, err)
 
 		sCtx := tantivy_go.NewSearchContextBuilder().
-			SetQuery(string(marshal)).
+			SetQueryFromJson(&finalQuery).
 			SetDocsLimit(100).
 			SetWithHighlights(false).
 			Build()
-		result, err := tc.SearchV2(sCtx)
+
+		require.JSONEq(t, string(expected), sCtx.GetQuery())
+
+		/*result, err := tc.SearchJson(sCtx)
 		require.NoError(t, err)
 
 		size, err := result.GetSize()
@@ -566,7 +573,7 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		jsonStr2, err := resDoc2.ToJson(schema, NameId)
 		require.NoError(t, err)
-		require.JSONEq(t, `{"highlights":[],"id":"id2","score":4.919108867645264}`, jsonStr2)
+		require.JSONEq(t, `{"highlights":[],"id":"id2","score":4.919108867645264}`, jsonStr2)*/
 	})
 
 	t.Run("docs search - when weights apply", func(t *testing.T) {

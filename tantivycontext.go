@@ -157,7 +157,7 @@ func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
 	return &SearchResult{ptr: ptr}, nil
 }
 
-// SearchV2 performs a simplified search query on the index and returns the search results.
+// SearchJson performs a simplified search query on the index and returns the search results.
 //
 // Parameters:
 //   - sCtx (SearchContext): The context for the search, containing query string,
@@ -166,7 +166,7 @@ func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
 // Returns:
 //   - *SearchResult: A pointer to the SearchResult containing the search results.
 //   - error: An error if the search fails.
-func (tc *TantivyContext) SearchV2(sCtx SearchContext) (*SearchResult, error) {
+func (tc *TantivyContext) SearchJson(sCtx SearchContext) (*SearchResult, error) {
 	// Ensure the query is valid
 	cQuery := C.CString(sCtx.GetQuery())
 	defer C.string_free(cQuery)
@@ -175,7 +175,7 @@ func (tc *TantivyContext) SearchV2(sCtx SearchContext) (*SearchResult, error) {
 	var errBuffer *C.char
 
 	// Call the C function
-	ptr := C.context_search2(
+	ptr := C.context_search_json(
 		tc.ptr,
 		cQuery,
 		&errBuffer,
