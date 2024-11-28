@@ -3,7 +3,9 @@
     "some words",
     "term",
     "another term",
-    "term2"
+    "term2",
+    "term3",
+    "not single term"
   ],
   "fields": [
     "body1",
@@ -11,7 +13,9 @@
     "body3",
     "title1",
     "title2",
-    "title3"
+    "title3",
+    "summary",
+    "comments"
   ],
   "query": {
     "subqueries": [
@@ -74,8 +78,8 @@
           "subqueries": [
             {
               "query": {
-                "field_index": 0,
-                "text_index": 0,
+                "field_index": 6,
+                "text_index": 4,
                 "boost": 1
               },
               "query_modifier": 1,
@@ -86,8 +90,8 @@
                 "subqueries": [
                   {
                     "query": {
-                      "field_index": 0,
-                      "text_index": 0,
+                      "field_index": 7,
+                      "text_index": 5,
                       "boost": 0.8
                     },
                     "query_modifier": 0,

@@ -143,26 +143,40 @@ mod for_tests {
 mod tests {
     use crate::queries::convert::convert_to_tantivy;
     use crate::queries::models::BoolQuery;
+    use crate::queries::QueryModifier::Must;
+    use crate::queries::QueryType::PhraseQuery;
     use crate::queries::{FinalQuery, GoQuery, QueryElement, QueryModifier};
     use std::fs;
-    use tantivy::query::PhrasePrefixQuery;
-    use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, STORED, TEXT};
+    use tantivy::query::PhraseQuery as TPhraseQuery;
+    use tantivy::query::{BooleanQuery, PhrasePrefixQuery};
+    use tantivy::query::{BoostQuery, Occur as TO};
+    use tantivy::query::{PhrasePrefixQuery as TPhrasePrefixQuery, Query};
+    use tantivy::schema::{Field, IndexRecordOption, Schema, TextFieldIndexing, STORED, TEXT};
     use tantivy::tokenizer::{
         AsciiFoldingFilter, Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer,
         TextAnalyzer,
     };
-    use tantivy::Index;
+    use tantivy::{Index, Term};
 
     fn expected_query() -> FinalQuery {
         FinalQuery {
-            texts: vec!["some words", "term", "another term", "term2"]
-                .into_iter()
-                .map(|t| t.to_string())
-                .collect(),
-            fields: vec!["body1", "body2", "body3", "title1", "title2", "title3"]
-                .into_iter()
-                .map(|t| t.to_string())
-                .collect(),
+            texts: vec![
+                "some words",
+                "term",
+                "another term",
+                "term2",
+                "term3",
+                "not single term",
+            ]
+            .into_iter()
+            .map(|t| t.to_string())
+            .collect(),
+            fields: vec![
+                "body1", "body2", "body3", "title1", "title2", "title3", "summary", "comments",
+            ]
+            .into_iter()
+            .map(|t| t.to_string())
+            .collect(),
             query: BoolQuery {
                 subqueries: Vec::from([
                     QueryElement {
@@ -218,8 +232,8 @@ mod tests {
                             subqueries: Vec::from([
                                 QueryElement {
                                     query: Some(GoQuery::PhrasePrefixQuery {
-                                        field_index: 0,
-                                        text_index: 0,
+                                        field_index: 6,
+                                        text_index: 4,
                                         boost: 1.0,
                                     }),
                                     modifier: QueryModifier::Should,
@@ -228,8 +242,8 @@ mod tests {
                                     query: Some(GoQuery::BoolQuery {
                                         subqueries: Vec::from([QueryElement {
                                             query: Some(GoQuery::PhraseQuery {
-                                                field_index: 0,
-                                                text_index: 0,
+                                                field_index: 7,
+                                                text_index: 5,
                                                 boost: 0.8,
                                             }),
                                             modifier: QueryModifier::Must,
@@ -262,132 +276,78 @@ mod tests {
         let given_query: FinalQuery = expected_query();
         let text_analyzer_simple = TextAnalyzer::builder(SimpleTokenizer::default()).build();
 
-        let mut text_options_body = TEXT;
-        text_options_body = text_options_body | STORED;
-        text_options_body = text_options_body.set_indexing_options(
+        let mut text_options = TEXT;
+        text_options = text_options | STORED;
+        text_options = text_options.set_indexing_options(
             TextFieldIndexing::default()
                 .set_tokenizer("simple")
                 .set_index_option(IndexRecordOption::WithFreqsAndPositions),
         );
 
         let mut schema_builder = Schema::builder();
-        schema_builder.add_text_field("body1", text_options_body.clone()); // Field(0)
-        schema_builder.add_text_field("body2", text_options_body.clone());
-        schema_builder.add_text_field("body3", text_options_body.clone());
-        schema_builder.add_text_field("title1", text_options_body.clone());
-        schema_builder.add_text_field("title2", text_options_body.clone());
-        schema_builder.add_text_field("title3", text_options_body); // Field(5)
+        let body1 = schema_builder.add_text_field("body1", text_options.clone()); // 1
+        let body2 = schema_builder.add_text_field("body2", text_options.clone()); // 2
+        let body3 = schema_builder.add_text_field("body3", text_options.clone()); // 3
+        let title1 = schema_builder.add_text_field("title1", text_options.clone()); // 4
+        let title2 = schema_builder.add_text_field("title2", text_options.clone()); // 5
+        let title3 = schema_builder.add_text_field("title3", text_options.clone()); // 6
+        let summary = schema_builder.add_text_field("summary", text_options.clone()); // 7
+        let comments = schema_builder.add_text_field("comments", text_options); // 8
         let schema = schema_builder.build();
         let index = Index::create_in_ram(schema.clone());
         index.tokenizers().register("simple", text_analyzer_simple);
 
         let parsed = convert_to_tantivy(&index, given_query, &schema).expect("can't convert");
+        let expected = BooleanQuery::new(vec![
+            (TO::Must, phrase_query(body1, vec!["some", "words"])),
+            (TO::Should, phrase_prefix_query(body2, vec!["term"])),
+            (TO::MustNot, phrase_prefix_query(body3, vec!["term"])),
+            (
+                TO::Must,
+                boost_query(phrase_query(title1, vec!["another", "term"]), 0.1),
+            ),
+            (
+                TO::Should,
+                boost_query(phrase_prefix_query(title2, vec!["term2"]), 0.1),
+            ),
+            (
+                TO::MustNot,
+                boost_query(phrase_prefix_query(title3, vec!["term2"]), 0.1),
+            ),
+            (
+                TO::Must,
+                Box::new(BooleanQuery::new(vec![
+                    (TO::Should, phrase_prefix_query(summary, vec!["term3"])),
+                    (
+                        TO::Should,
+                        Box::new(BooleanQuery::new(vec![(
+                            TO::Must,
+                            boost_query(phrase_query(comments, vec!["not", "single", "term"]), 0.8),
+                        )])),
+                    ),
+                ])),
+            ),
+        ]);
 
-        let expected = expected_tantivy_query_str();
-
-        assert_eq!(expected, format!("{parsed:#?}"));
+        assert_eq!(format!("{expected:#?}"), format!("{parsed:#?}"));
     }
 
-    fn expected_tantivy_query_str() -> &'static str {
-        r#"BooleanQuery {
-    subqueries: [
-        (
-            Must,
-            PhraseQuery {
-                field: Field(
-                    0,
-                ),
-                phrase_terms: [
-                    (
-                        0,
-                        Term(field=0, type=Str, "some"),
-                    ),
-                    (
-                        1,
-                        Term(field=0, type=Str, "words"),
-                    ),
-                ],
-                slop: 0,
-            },
-        ),
-        (
-            Should,
-            PhrasePrefixQuery {
-                field: Field(
-                    1,
-                ),
-                phrase_terms: [],
-                prefix: (
-                    0,
-                    Term(field=1, type=Str, "term"),
-                ),
-                max_expansions: 50,
-            },
-        ),
-        (
-            MustNot,
-            PhrasePrefixQuery {
-                field: Field(
-                    2,
-                ),
-                phrase_terms: [],
-                prefix: (
-                    0,
-                    Term(field=2, type=Str, "term"),
-                ),
-                max_expansions: 50,
-            },
-        ),
-        (
-            Must,
-            Boost(query=PhraseQuery { field: Field(3), phrase_terms: [(0, Term(field=3, type=Str, "another")), (1, Term(field=3, type=Str, "term"))], slop: 0 }, boost=0.1),
-        ),
-        (
-            Should,
-            Boost(query=PhrasePrefixQuery { field: Field(4), phrase_terms: [], prefix: (0, Term(field=4, type=Str, "term2")), max_expansions: 50 }, boost=0.1),
-        ),
-        (
-            MustNot,
-            Boost(query=PhrasePrefixQuery { field: Field(5), phrase_terms: [], prefix: (0, Term(field=5, type=Str, "term2")), max_expansions: 50 }, boost=0.1),
-        ),
-        (
-            Must,
-            BooleanQuery {
-                subqueries: [
-                    (
-                        Should,
-                        PhrasePrefixQuery {
-                            field: Field(
-                                0,
-                            ),
-                            phrase_terms: [
-                                (
-                                    0,
-                                    Term(field=0, type=Str, "some"),
-                                ),
-                            ],
-                            prefix: (
-                                1,
-                                Term(field=0, type=Str, "words"),
-                            ),
-                            max_expansions: 50,
-                        },
-                    ),
-                    (
-                        Should,
-                        BooleanQuery {
-                            subqueries: [
-                                (
-                                    Must,
-                                    Boost(query=PhraseQuery { field: Field(0), phrase_terms: [(0, Term(field=0, type=Str, "some")), (1, Term(field=0, type=Str, "words"))], slop: 0 }, boost=0.8),
-                                ),
-                            ],
-                        },
-                    ),
-                ],
-            },
-        ),
-    ],
-}"#
+    fn make_terms(field: Field, words: Vec<&str>) -> Vec<Term> {
+        words
+            .into_iter()
+            .map(|w| Term::from_field_text(field, w))
+            .collect()
+    }
+
+    fn phrase_query(field: Field, words: Vec<&str>) -> Box<TPhraseQuery> {
+        Box::new(TPhraseQuery::new(make_terms(field, words)))
+    }
+
+    fn phrase_prefix_query(field: Field, words: Vec<&str>) -> Box<TPhrasePrefixQuery> {
+        Box::new(TPhrasePrefixQuery::new(make_terms(field, words)))
+    }
+
+    fn boost_query(query: Box<dyn Query>, boost: f32) -> Box<BoostQuery> {
+        Box::new(BoostQuery::new(query, boost))
     }
 }

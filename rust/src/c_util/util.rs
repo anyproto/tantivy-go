@@ -525,7 +525,6 @@ pub fn search_json(
     };
 
     let query = parse_query_from_json(&context.index, &schema, &query)?;
-
     let top_docs = match searcher.search(
         &query,
         &tantivy::collector::TopDocs::with_limit(docs_limit),

@@ -498,24 +498,7 @@ func Test(t *testing.T) {
 		require.Equal(t, 2, int(size))
 	})
 
-	t.Run("azaza", func(t *testing.T) {
-		/*schema, tc := fx(t, limit, 1, false, false)
-
-		defer tc.Free()
-
-		doc, err := addDoc(t, "an apple", "", "id1", tc)
-		require.NoError(t, err)
-
-		doc2, err := addDoc(t, "", "an apple", "id2", tc)
-		require.NoError(t, err)
-
-		err = tc.AddAndConsumeDocuments(doc, doc2)
-		require.NoError(t, err)
-
-		docs, err := tc.NumDocs()
-		require.NoError(t, err)
-		require.Equal(t, uint64(2), docs)*/
-
+	t.Run("correct search query parse", func(t *testing.T) {
 		qb := tantivy_go.NewQueryBuilder()
 
 		finalQuery := qb.
@@ -525,9 +508,9 @@ func Test(t *testing.T) {
 			Query(tantivy_go.Must, "title1", "another term", tantivy_go.PhraseQuery, 0.1).
 			Query(tantivy_go.Should, "title2", "term2", tantivy_go.PhrasePrefixQuery, 0.1).
 			Query(tantivy_go.MustNot, "title3", "term2", tantivy_go.SingleTermPrefixQuery, 0.1).
-			BooleanQuery(tantivy_go.Must, tantivy_go.NewQueryBuilder().
+			BooleanQuery(tantivy_go.Must, qb.NestedBuilder().
 				Query(tantivy_go.Should, "summary", "term3", tantivy_go.PhrasePrefixQuery, 1.0).
-				BooleanQuery(tantivy_go.Should, tantivy_go.NewQueryBuilder().
+				BooleanQuery(tantivy_go.Should, qb.NestedBuilder().
 					Query(tantivy_go.Must, "comments", "not single term", tantivy_go.PhraseQuery, 0.8),
 				),
 			).
@@ -543,37 +526,49 @@ func Test(t *testing.T) {
 			Build()
 
 		require.JSONEq(t, string(expected), sCtx.GetQuery())
+	})
 
-		/*result, err := tc.SearchJson(sCtx)
+	t.Run("docs search query - when prefix", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, false, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "", "gaszählerstand", "id1", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		finalQuery := tantivy_go.NewQueryBuilder().
+			Query(tantivy_go.Must, NameBody, "gaszä", tantivy_go.SingleTermPrefixQuery, 1.0).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&finalQuery).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			Build()
+
+		result, err := tc.SearchJson(sCtx)
 		require.NoError(t, err)
 
 		size, err := result.GetSize()
 		defer result.Free()
-		require.Equal(t, 2, int(size))
-		resDoc, err := result.Get(0)
-		require.NoError(t, err)
-		jsonStr, err := resDoc.ToJson(schema, NameId)
-		require.NoError(t, err)
-		require.JSONEq(t, `{"highlights":[],"id":"id1","score":1.9676434993743896}`, jsonStr)
+		require.Equal(t, 1, int(size))
 
 		sCtx2 := tantivy_go.NewSearchContextBuilder().
-			SetQuery("apple").
+			SetQuery("gaszä").
 			SetDocsLimit(100).
 			SetWithHighlights(false).
-			AddField(NameTitle, 1.0).
-			AddField(NameBody, 10.0).
+			AddFieldDefaultWeight(NameBody).
 			Build()
+
 		result2, err := tc.Search(sCtx2)
 		require.NoError(t, err)
 
 		size2, err := result2.GetSize()
 		defer result2.Free()
-		require.Equal(t, 2, int(size2))
-		resDoc2, err := result2.Get(0)
-		require.NoError(t, err)
-		jsonStr2, err := resDoc2.ToJson(schema, NameId)
-		require.NoError(t, err)
-		require.JSONEq(t, `{"highlights":[],"id":"id2","score":4.919108867645264}`, jsonStr2)*/
+		require.Equal(t, 0, int(size2))
 	})
 
 	t.Run("docs search - when weights apply", func(t *testing.T) {

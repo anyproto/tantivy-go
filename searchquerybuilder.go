@@ -40,39 +40,52 @@ type FinalQuery struct {
 	Query  *BooleanQuery `json:"query"`
 }
 
+type sharedStore struct {
+	texts     map[string]int
+	fields    map[string]int
+	textList  []string
+	fieldList []string
+}
+
 type QueryBuilder struct {
-	texts      map[string]int
-	fields     map[string]int
-	textList   []string
-	fieldList  []string
+	store      *sharedStore
 	subqueries []QueryElement
 }
 
 func NewQueryBuilder() *QueryBuilder {
 	return &QueryBuilder{
-		texts:      make(map[string]int),
-		textList:   []string{},
+		store: &sharedStore{
+			texts:    make(map[string]int),
+			textList: []string{},
+		},
+		subqueries: []QueryElement{},
+	}
+}
+
+func (qb *QueryBuilder) NestedBuilder() *QueryBuilder {
+	return &QueryBuilder{
+		store:      qb.store,
 		subqueries: []QueryElement{},
 	}
 }
 
 func (qb *QueryBuilder) AddText(text string) int {
-	if idx, exists := qb.texts[text]; exists {
+	if idx, exists := qb.store.texts[text]; exists {
 		return idx
 	}
-	idx := len(qb.textList)
-	qb.texts[text] = idx
-	qb.textList = append(qb.textList, text)
+	idx := len(qb.store.textList)
+	qb.store.texts[text] = idx
+	qb.store.textList = append(qb.store.textList, text)
 	return idx
 }
 
 func (qb *QueryBuilder) AddField(text string) int {
-	if idx, exists := qb.fields[text]; exists {
+	if idx, exists := qb.store.fields[text]; exists {
 		return idx
 	}
-	idx := len(qb.fieldList)
-	qb.texts[text] = idx
-	qb.fieldList = append(qb.fieldList, text)
+	idx := len(qb.store.fieldList)
+	qb.store.texts[text] = idx
+	qb.store.fieldList = append(qb.store.fieldList, text)
 	return idx
 }
 
@@ -104,8 +117,8 @@ func (qb *QueryBuilder) BooleanQuery(modifier QueryModifier, subBuilder *QueryBu
 
 func (qb *QueryBuilder) Build() FinalQuery {
 	return FinalQuery{
-		Texts:  qb.textList,
-		Fields: qb.fieldList,
+		Texts:  qb.store.textList,
+		Fields: qb.store.fieldList,
 		Query: &BooleanQuery{
 			Subqueries: qb.subqueries,
 		},

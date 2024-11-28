@@ -1,6 +1,7 @@
 use std::ffi::CString;
 use std::os::raw::{c_char, c_float};
 use std::ptr;
+use log::debug;
 use logcall::logcall;
 use tantivy::{schema::*};
 
