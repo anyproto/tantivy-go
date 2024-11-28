@@ -43,6 +43,9 @@ fn convert_to_tantivy(
                 } => {
                     let (field, text) = process_field_and_text(*field_index, *text_index)?;
                     let terms = extract_terms(&index, field, text)?;
+                    if terms.len() <= 1 {
+                        return Err(Box::<dyn Error>::from("Phrase must have more than one term"));
+                    }
                     try_boost(occur, *boost, Box::new(PhraseQuery::new(terms)))
                 }
 
@@ -63,9 +66,6 @@ fn convert_to_tantivy(
                 } => {
                     let (field, text) = process_field_and_text(*field_index, *text_index)?;
                     let terms = extract_terms(&index, field, text)?;
-                    if (terms.len() < 1) {
-                        return Err(Box::new(fmt::Error));
-                    }
                     try_boost(
                         occur,
                         *boost,

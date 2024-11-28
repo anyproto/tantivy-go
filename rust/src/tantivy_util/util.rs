@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
-use tantivy::{Index, Term};
+use tantivy::{Index, TantivyError, Term};
 use tantivy::schema::{Field, OwnedValue};
 
 pub fn extract_text_from_owned_value<'a>(value: &'a OwnedValue) -> Option<Cow<'a, str>> {
@@ -26,7 +26,11 @@ pub fn extract_terms(
         .iter()
         .map(|term| Term::from_field_text(field, term))
         .collect();
-    Ok(term_queries)
+    if term_queries.len() > 0 {
+        Ok(term_queries)
+    } else {
+        Err("Zero terms".into())
+    }
 }
 
 #[derive(Debug)]
