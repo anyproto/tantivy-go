@@ -6,8 +6,10 @@ const (
 	BoolQuery QueryType = iota
 	PhraseQuery
 	PhrasePrefixQuery
-	SingleTermPrefixQuery
-	None
+	TermPrefixQuery
+	TermQuery
+	EveryTermQuery
+	OneOfTermQuery
 )
 
 type QueryModifier int
@@ -55,8 +57,10 @@ type QueryBuilder struct {
 func NewQueryBuilder() *QueryBuilder {
 	return &QueryBuilder{
 		store: &sharedStore{
-			texts:    make(map[string]int),
-			textList: []string{},
+			texts:     make(map[string]int),
+			fields:    make(map[string]int),
+			textList:  []string{},
+			fieldList: []string{},
 		},
 		subqueries: []QueryElement{},
 	}
@@ -79,13 +83,13 @@ func (qb *QueryBuilder) AddText(text string) int {
 	return idx
 }
 
-func (qb *QueryBuilder) AddField(text string) int {
-	if idx, exists := qb.store.fields[text]; exists {
+func (qb *QueryBuilder) AddField(field string) int {
+	if idx, exists := qb.store.fields[field]; exists {
 		return idx
 	}
 	idx := len(qb.store.fieldList)
-	qb.store.texts[text] = idx
-	qb.store.fieldList = append(qb.store.fieldList, text)
+	qb.store.fields[field] = idx
+	qb.store.fieldList = append(qb.store.fieldList, field)
 	return idx
 }
 

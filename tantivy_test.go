@@ -101,6 +101,153 @@ func Test(t *testing.T) {
 		require.Equal(t, uint64(0), docs)
 	})
 
+	t.Run("docs search - when ngram", func(t *testing.T) {
+		schema, tc := fx(t, limit, 1, false, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "dc-9", "", "1", tc)
+		require.NoError(t, err)
+		doc2, err := addDoc(t, "Werfer", "", "2", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc, doc2)
+		require.NoError(t, err)
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("dc-9").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+
+		result, err := tc.Search(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		require.Equal(t, 1, int(size))
+
+		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+			var doc DocSample
+			return doc, json.Unmarshal([]byte(jsonStr), &doc)
+		}, NameId, NameTitle, NameBody)
+		require.NoError(t, err)
+
+		require.Equal(t, len(results), int(size))
+		require.NoError(t, err)
+
+		for next := range results {
+			model := results[next].(DocSample)
+			require.Equal(t, DocSample{
+				"Douglas DC-9",
+				"1",
+				"",
+				[]Highlight{},
+			},
+				model)
+		}
+	})
+
+	t.Run("docs search - when ngram json", func(t *testing.T) {
+		schema, tc := fx(t, limit, 1, false, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "Douglas DC-9", "", "1", tc)
+		require.NoError(t, err)
+		doc2, err := addDoc(t, "Werfer", "", "2", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc, doc2)
+		require.NoError(t, err)
+
+		build := tantivy_go.NewQueryBuilder().Query(tantivy_go.Must, NameTitle, "dc-9", tantivy_go.PhraseQuery, 1.0).Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&build).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+
+		result, err := tc.SearchJson(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		require.Equal(t, 1, int(size))
+
+		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+			var doc DocSample
+			return doc, json.Unmarshal([]byte(jsonStr), &doc)
+		}, NameId, NameTitle, NameBody)
+		require.NoError(t, err)
+
+		require.Equal(t, len(results), int(size))
+		require.NoError(t, err)
+
+		for next := range results {
+			model := results[next].(DocSample)
+			require.Equal(t, DocSample{
+				"Douglas DC-9",
+				"1",
+				"",
+				[]Highlight{},
+			},
+				model)
+		}
+	})
+
+	t.Run("docs search - when ngram json2", func(t *testing.T) {
+		schema, tc := fx(t, limit, 1, true, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "Douglas DC-9", "", "bafyreiarbtedoyhl54gspq7weophjxspexdlh2gr7cgjpl4bbqxefhb6p4.1lx08wya7kx2k", tc)
+		require.NoError(t, err)
+		doc2, err := addDoc(t, "Werfer", "", "2", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc, doc2)
+		require.NoError(t, err)
+		build := tantivy_go.NewQueryBuilder().
+			Query(tantivy_go.Must, NameId, "bafyreiarbtedoyhl54gspq7weophjxspexdlh2gr7cgjpl4bbqxefhb6p4.1lx08wya7kx2k", tantivy_go.TermQuery, 1.0).
+			Query(tantivy_go.Must, NameTitle, "dc-9", tantivy_go.PhraseQuery, 1.0).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&build).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+
+		result, err := tc.SearchJson(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		require.Equal(t, 1, int(size))
+
+		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+			var doc DocSample
+			return doc, json.Unmarshal([]byte(jsonStr), &doc)
+		}, NameId, NameTitle, NameBody)
+		require.NoError(t, err)
+
+		require.Equal(t, len(results), int(size))
+		require.NoError(t, err)
+
+		for next := range results {
+			model := results[next].(DocSample)
+			require.Equal(t, DocSample{
+				"Douglas DC-9",
+				"bafyreiarbtedoyhl54gspq7weophjxspexdlh2gr7cgjpl4bbqxefhb6p4.1lx08wya7kx2k",
+				"",
+				[]Highlight{},
+			},
+				model)
+		}
+	})
+
 	t.Run("docs remove - when by body token", func(t *testing.T) {
 		_, tc := fx(t, limit, minGram, false, false)
 
@@ -504,10 +651,10 @@ func Test(t *testing.T) {
 		finalQuery := qb.
 			Query(tantivy_go.Must, "body1", "some words", tantivy_go.PhraseQuery, 1.0).
 			Query(tantivy_go.Should, "body2", "term", tantivy_go.PhrasePrefixQuery, 1.0).
-			Query(tantivy_go.MustNot, "body3", "term", tantivy_go.SingleTermPrefixQuery, 1.0).
+			Query(tantivy_go.MustNot, "body3", "term", tantivy_go.TermPrefixQuery, 1.0).
 			Query(tantivy_go.Must, "title1", "another term", tantivy_go.PhraseQuery, 0.1).
 			Query(tantivy_go.Should, "title2", "term2", tantivy_go.PhrasePrefixQuery, 0.1).
-			Query(tantivy_go.MustNot, "title3", "term2", tantivy_go.SingleTermPrefixQuery, 0.1).
+			Query(tantivy_go.MustNot, "title3", "term2", tantivy_go.TermPrefixQuery, 0.1).
 			BooleanQuery(tantivy_go.Must, qb.NestedBuilder().
 				Query(tantivy_go.Should, "summary", "term3", tantivy_go.PhrasePrefixQuery, 1.0).
 				BooleanQuery(tantivy_go.Should, qb.NestedBuilder().
@@ -540,7 +687,7 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 
 		finalQuery := tantivy_go.NewQueryBuilder().
-			Query(tantivy_go.Must, NameBody, "gaszä", tantivy_go.SingleTermPrefixQuery, 1.0).
+			Query(tantivy_go.Must, NameBody, "gaszä", tantivy_go.TermPrefixQuery, 1.0).
 			Build()
 
 		sCtx := tantivy_go.NewSearchContextBuilder().
@@ -672,7 +819,7 @@ func fx(
 		true,
 		false,
 		tantivy_go.IndexRecordOptionWithFreqsAndPositions,
-		tantivy_go.TokenizerEdgeNgram,
+		tantivy_go.TokenizerNgram,
 	)
 	require.NoError(t, err)
 
@@ -730,6 +877,9 @@ func fx(
 	require.NoError(t, err)
 
 	err = tc.RegisterTextAnalyzerEdgeNgram(tantivy_go.TokenizerEdgeNgram, minGram, 4, 100)
+	require.NoError(t, err)
+
+	err = tc.RegisterTextAnalyzerNgram(tantivy_go.TokenizerNgram, minGram, 5, true)
 	require.NoError(t, err)
 
 	err = tc.RegisterTextAnalyzerRaw(tantivy_go.TokenizerRaw)

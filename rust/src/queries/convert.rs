@@ -1,10 +1,14 @@
 use crate::queries::models::BoolQuery;
 use crate::queries::{FinalQuery, GoQuery, QueryElement, QueryModifier};
 use crate::tantivy_util::extract_terms;
+use log::debug;
 use std::error::Error;
 use std::{env, fmt, fs};
-use tantivy::query::{BooleanQuery, BoostQuery, Occur, PhrasePrefixQuery, PhraseQuery, Query};
-use tantivy::schema::Schema;
+use tantivy::query::Occur::{Must, Should};
+use tantivy::query::{
+    BooleanQuery, BoostQuery, Occur, PhrasePrefixQuery, PhraseQuery, Query, TermQuery,
+};
+use tantivy::schema::{IndexRecordOption, Schema};
 use tantivy::{Index, Score};
 
 fn convert_to_tantivy(
@@ -43,10 +47,18 @@ fn convert_to_tantivy(
                 } => {
                     let (field, text) = process_field_and_text(*field_index, *text_index)?;
                     let terms = extract_terms(&index, field, text)?;
-                    if terms.len() <= 1 {
-                        return Err(Box::<dyn Error>::from("Phrase must have more than one term"));
+                    if terms.len() == 1 {
+                        try_boost(
+                            occur,
+                            *boost,
+                            Box::new(TermQuery::new(
+                                terms[0].clone(),
+                                IndexRecordOption::WithFreqsAndPositions,
+                            )),
+                        )
+                    } else {
+                        try_boost(occur, *boost, Box::new(PhraseQuery::new(terms)))
                     }
-                    try_boost(occur, *boost, Box::new(PhraseQuery::new(terms)))
                 }
 
                 GoQuery::PhrasePrefixQuery {
@@ -59,7 +71,7 @@ fn convert_to_tantivy(
                     try_boost(occur, *boost, Box::new(PhrasePrefixQuery::new(terms)))
                 }
 
-                GoQuery::SingleTermPrefixQuery {
+                GoQuery::TermPrefixQuery {
                     field_index,
                     text_index,
                     boost,
@@ -71,6 +83,63 @@ fn convert_to_tantivy(
                         *boost,
                         Box::new(PhrasePrefixQuery::new(vec![terms[0].clone()])),
                     )
+                }
+
+                GoQuery::TermQuery {
+                    field_index,
+                    text_index,
+                    boost,
+                } => {
+                    let (field, text) = process_field_and_text(*field_index, *text_index)?;
+                    let terms = extract_terms(&index, field, text)?;
+                    try_boost(
+                        occur,
+                        *boost,
+                        Box::new(TermQuery::new(
+                            terms[0].clone(),
+                            IndexRecordOption::WithFreqs,
+                        )),
+                    )
+                }
+
+                GoQuery::EveryTermQuery {
+                    field_index,
+                    text_index,
+                    boost,
+                } => {
+                    let (field, text) = process_field_and_text(*field_index, *text_index)?;
+                    let terms = extract_terms(&index, field, text)?;
+                    let mut post_terms = vec![];
+                    for (i, term) in terms.iter().enumerate() {
+                        let result = try_boost(
+                            Must,
+                            1.0,
+                            Box::new(TermQuery::new(term.clone(), IndexRecordOption::WithFreqs)),
+                        )?;
+                        post_terms.push(result);
+                    }
+
+                    try_boost(occur, *boost, Box::new(BooleanQuery::new(post_terms)))
+                }
+
+                GoQuery::OneOfTermQuery {
+                    field_index,
+                    text_index,
+                    boost,
+                } => {
+                    let (field, text) = process_field_and_text(*field_index, *text_index)?;
+                    let terms = extract_terms(&index, field, text)?;
+                    let mut post_terms = vec![];
+                    for (i, term) in terms.iter().enumerate() {
+                        let result = try_boost(
+                            Should,
+                            1.0 - 0.5f32 * (i + 1) as f32 / terms.len() as f32,
+                            Box::new(TermQuery::new(term.clone(), IndexRecordOption::WithFreqs)),
+                        )?;
+                        post_terms.push(result);
+                    }
+
+                    try_boost(occur, *boost, Box::new(BooleanQuery::new(post_terms)))
                 }
 
                 GoQuery::BoolQuery { subqueries } => {
@@ -131,7 +200,8 @@ pub fn parse_query_from_json(
     json: &str,
 ) -> Result<Box<dyn Query>, Box<dyn Error>> {
     let parsed = serde_json::from_str(json)?;
-    convert_to_tantivy(index, parsed, schema)
+    let result = convert_to_tantivy(index, parsed, schema);
+    result
 }
 
 mod for_tests {
@@ -196,7 +266,7 @@ mod tests {
                         modifier: QueryModifier::Should,
                     },
                     QueryElement {
-                        query: Some(GoQuery::SingleTermPrefixQuery {
+                        query: Some(GoQuery::TermPrefixQuery {
                             field_index: 2,
                             text_index: 1,
                             boost: 1.0,
@@ -220,7 +290,7 @@ mod tests {
                         modifier: QueryModifier::Should,
                     },
                     QueryElement {
-                        query: Some(GoQuery::SingleTermPrefixQuery {
+                        query: Some(GoQuery::TermPrefixQuery {
                             field_index: 5,
                             text_index: 3,
                             boost: 0.1,

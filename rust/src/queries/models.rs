@@ -8,7 +8,10 @@ pub enum QueryType {
     BoolQuery,
     PhraseQuery,
     PhrasePrefixQuery,
-    SingleTermPrefixQuery,
+    TermPrefixQuery,
+    TermQuery,
+    EveryTermQuery,
+    OneOfTermQuery,
     None,
 }
 
@@ -37,7 +40,22 @@ pub enum GoQuery {
         text_index: usize,
         boost: f32,
     },
-    SingleTermPrefixQuery {
+    TermPrefixQuery {
+        field_index: usize,
+        text_index: usize,
+        boost: f32,
+    },
+    TermQuery {
+        field_index: usize,
+        text_index: usize,
+        boost: f32,
+    },
+    EveryTermQuery{
+        field_index: usize,
+        text_index: usize,
+        boost: f32,
+    },
+    OneOfTermQuery{
         field_index: usize,
         text_index: usize,
         boost: f32,

@@ -1,3 +1,4 @@
+use log::debug;
 use tantivy::schema::{FAST, IndexRecordOption, SchemaBuilder, STORED, STRING, TEXT, TextFieldIndexing};
 
 pub fn add_text_field(
@@ -17,6 +18,6 @@ pub fn add_text_field(
             .set_tokenizer(tokenizer_name)
             .set_index_option(index_record_option)
     );
+    debug!("## text_option: {:#?}", text_options);
     builder.add_text_field(field_name, text_options);
 }
-

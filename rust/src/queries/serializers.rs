@@ -11,7 +11,10 @@ impl QueryType {
             0 => Some(QueryType::BoolQuery),
             1 => Some(QueryType::PhraseQuery),
             2 => Some(QueryType::PhrasePrefixQuery),
-            3 => Some(QueryType::SingleTermPrefixQuery),
+            3 => Some(QueryType::TermPrefixQuery),
+            4 => Some(QueryType::TermQuery),
+            5 => Some(QueryType::EveryTermQuery),
+            6 => Some(QueryType::OneOfTermQuery),
             _ => None,
         }
     }
@@ -143,7 +146,8 @@ impl<'de> Deserialize<'de> for QueryElement {
                         .map_err(serde::de::Error::custom)?,
                 })
             }
-            QueryType::PhraseQuery | QueryType::PhrasePrefixQuery | QueryType::SingleTermPrefixQuery => {
+            QueryType::PhraseQuery | QueryType::PhrasePrefixQuery | QueryType::TermPrefixQuery
+            | QueryType::TermQuery | QueryType::EveryTermQuery | QueryType::OneOfTermQuery => {
                 let query_data = extract_query_data::<D>(&map)?;
                 let (field_index, text_index, boost) = extract_query_indices_and_boost(query_data);
 
@@ -158,7 +162,22 @@ impl<'de> Deserialize<'de> for QueryElement {
                         text_index,
                         boost,
                     },
-                    QueryType::SingleTermPrefixQuery => GoQuery::SingleTermPrefixQuery {
+                    QueryType::TermPrefixQuery => GoQuery::TermPrefixQuery {
+                        field_index,
+                        text_index,
+                        boost,
+                    },
+                    QueryType::TermQuery => GoQuery::TermQuery {
+                        field_index,
+                        text_index,
+                        boost,
+                    },
+                    QueryType::EveryTermQuery => GoQuery::EveryTermQuery {
+                        field_index,
+                        text_index,
+                        boost,
+                    },
+                    QueryType::OneOfTermQuery => GoQuery::OneOfTermQuery {
                         field_index,
                         text_index,
                         boost,
