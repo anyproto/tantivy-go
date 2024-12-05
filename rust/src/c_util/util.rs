@@ -1,9 +1,6 @@
 use crate::config;
 use crate::queries::{parse_query_from_json};
-use crate::tantivy_util::{
-    convert_document_to_json, find_highlights, get_string_field_entry, Document,
-    SearchResult, TantivyContext, DOCUMENT_BUDGET_BYTES,
-};
+use crate::tantivy_util::{convert_document_to_json, find_highlights, get_string_field_entry, Document, SearchResult, TantivyContext, TantivyGoError, DOCUMENT_BUDGET_BYTES};
 use log::debug;
 use serde_json::json;
 use std::borrow::Cow;
@@ -13,7 +10,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_float};
 use std::panic::PanicInfo;
 use std::path::Path;
-use std::{fmt, fs, panic, slice};
+use std::{fs, panic, slice};
 use tantivy::directory::MmapDirectory;
 use tantivy::schema::{Field, Schema};
 use tantivy::{Index, IndexWriter, Score, TantivyDocument, TantivyError, Term};
@@ -567,7 +564,7 @@ pub fn search_json(
 
     let query = match assert_string(query_ptr, error_buffer) {
         Some(value) => value,
-        None => return Err(Box::new(fmt::Error)),
+        None => return Err(Box::new(TantivyGoError("assert_string error".to_string()))),
     };
 
     let query = match parse_query_from_json(&context.index, &schema, &query) {
@@ -597,7 +594,7 @@ pub fn search_json(
                         Ok(highlights) => highlights,
                         Err(err) => {
                             set_error(&err.to_string(), error_buffer);
-                            return Err(Box::new(fmt::Error));
+                            return Err(Box::new(err));
                         }
                     };
                 documents.push(Document {
@@ -609,7 +606,7 @@ pub fn search_json(
 
             Err(err) => {
                 set_error(&err.to_string(), error_buffer);
-                return Err(Box::new(fmt::Error));
+                return Err(Box::new(err));
             }
         };
     }

@@ -179,7 +179,6 @@ fn convert_to_tantivy(
     Ok(Box::new(bool_query))
 }
 
-// Convert your `QueryModifier` to Tantivy's `Occur`
 fn modifier_to_occur(modifier: &QueryModifier) -> Occur {
     match modifier {
         QueryModifier::Must => Occur::Must,

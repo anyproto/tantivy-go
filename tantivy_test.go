@@ -271,10 +271,10 @@ func Test(t *testing.T) {
 	t.Run("docs search and remove - when thai", func(t *testing.T) {
 		_, tc := fxWithConfig(t, defaultTokenizerConfig().apply(func(tc *tantivyConfig) {
 			tc.modifyField(NameTitle, func(field *fieldConfig) {
-				field.Tokenizer = tantivy_go.TokenizerEdgeNgram
+				field.tokenizer = tantivy_go.TokenizerEdgeNgram
 			})
 			tc.modifyTokenizer(tantivy_go.TokenizerEdgeNgram, func(tci *tokenizerConfigItem) {
-				tci.Args[0] = uintptr(1)
+				tci.args[0] = uintptr(1)
 			})
 		}))
 
@@ -514,7 +514,7 @@ func Test(t *testing.T) {
 	t.Run("docs search and remove - when title and edge", func(t *testing.T) {
 		schema, tc := fxWithConfig(t, defaultTokenizerConfig().apply(func(tc *tantivyConfig) {
 			tc.modifyField(NameTitle, func(field *fieldConfig) {
-				field.Tokenizer = tantivy_go.TokenizerEdgeNgram
+				field.tokenizer = tantivy_go.TokenizerEdgeNgram
 			})
 		}))
 
@@ -918,38 +918,38 @@ func fx(
 }
 
 type tantivyConfig struct {
-	Utf8Lenient      bool
-	RustConfig       string
-	Fields           []*fieldConfig
-	TokenizerConfigs []*tokenizerConfigItem
+	utf8Lenient      bool
+	rustConfig       string
+	fields           []*fieldConfig
+	tokenizerConfigs []*tokenizerConfigItem
 }
 
 type fieldConfig struct {
-	Name         string
-	Stored       bool
-	Indexed      bool
-	IsFast       bool
-	RecordOption int
-	Tokenizer    string
+	name         string
+	stored       bool
+	indexed      bool
+	isFast       bool
+	recordOption int
+	tokenizer    string
 }
 
 type tokenizerConfigItem struct {
 	Type string
-	Args []interface{}
+	args []interface{}
 }
 
 func defaultTokenizerConfig() *tantivyConfig {
 	return &tantivyConfig{
-		Utf8Lenient: false,
-		RustConfig:  "debug",
-		Fields: []*fieldConfig{
+		utf8Lenient: false,
+		rustConfig:  "debug",
+		fields: []*fieldConfig{
 			{NameTitle, true, true, false, tantivy_go.IndexRecordOptionWithFreqsAndPositions, tantivy_go.TokenizerNgram},
 			{NameTitleZh, true, true, false, tantivy_go.IndexRecordOptionWithFreqsAndPositions, tantivy_go.TokenizerJieba},
 			{NameId, true, false, false, tantivy_go.IndexRecordOptionBasic, tantivy_go.TokenizerRaw},
 			{NameBody, true, true, false, tantivy_go.IndexRecordOptionWithFreqsAndPositions, tantivy_go.TokenizerSimple},
 			{NameBodyZh, true, true, false, tantivy_go.IndexRecordOptionWithFreqsAndPositions, tantivy_go.TokenizerJieba},
 		},
-		TokenizerConfigs: []*tokenizerConfigItem{
+		tokenizerConfigs: []*tokenizerConfigItem{
 			{tantivy_go.TokenizerSimple, []interface{}{uintptr(100), tantivy_go.English}},
 			{tantivy_go.TokenizerJieba, []interface{}{uintptr(100)}},
 			{tantivy_go.TokenizerEdgeNgram, []interface{}{uintptr(minGram), uintptr(maxGram), uintptr(limit)}},
@@ -965,8 +965,8 @@ func (tc *tantivyConfig) apply(apply func(tc *tantivyConfig)) *tantivyConfig {
 }
 
 func (tc *tantivyConfig) modifyField(name string, modifier func(field *fieldConfig)) *tantivyConfig {
-	for _, field := range tc.Fields {
-		if field.Name == name {
+	for _, field := range tc.fields {
+		if field.name == name {
 			modifier(field)
 		}
 	}
@@ -974,7 +974,7 @@ func (tc *tantivyConfig) modifyField(name string, modifier func(field *fieldConf
 }
 
 func (tc *tantivyConfig) modifyTokenizer(name string, modifier func(config *tokenizerConfigItem)) *tantivyConfig {
-	for _, config := range tc.TokenizerConfigs {
+	for _, config := range tc.tokenizerConfigs {
 		if config.Type == name {
 			modifier(config)
 		}
@@ -987,7 +987,7 @@ func modifyTokenizer(tokenizers []tokenizerConfigItem) []tokenizerConfigItem {
 		if tokenizer.Type == tantivy_go.TokenizerNgram {
 			tokenizers[i] = tokenizerConfigItem{
 				Type: tantivy_go.TokenizerNgram,
-				Args: []interface{}{uintptr(3), uintptr(5), true}, // Измененные параметры
+				args: []interface{}{uintptr(3), uintptr(5), true}, // Измененные параметры
 			}
 		}
 	}
@@ -995,20 +995,20 @@ func modifyTokenizer(tokenizers []tokenizerConfigItem) []tokenizerConfigItem {
 }
 
 func fxWithConfig(t *testing.T, config *tantivyConfig) (*tantivy_go.Schema, *tantivy_go.TantivyContext) {
-	err := internal.LibInit(true, config.Utf8Lenient, config.RustConfig)
+	err := internal.LibInit(true, config.utf8Lenient, config.rustConfig)
 	assert.NoError(t, err)
 
 	builder, err := tantivy_go.NewSchemaBuilder()
 	require.NoError(t, err)
 
-	for _, field := range config.Fields {
+	for _, field := range config.fields {
 		err = builder.AddTextField(
-			field.Name,
-			field.Stored,
-			field.Indexed,
-			field.IsFast,
-			field.RecordOption,
-			field.Tokenizer,
+			field.name,
+			field.stored,
+			field.indexed,
+			field.isFast,
+			field.recordOption,
+			field.tokenizer,
 		)
 		require.NoError(t, err)
 	}
@@ -1020,16 +1020,16 @@ func fxWithConfig(t *testing.T, config *tantivyConfig) (*tantivy_go.Schema, *tan
 	tc, err := tantivy_go.NewTantivyContextWithSchema("index_dir", schema)
 	require.NoError(t, err)
 
-	for _, tokenizer := range config.TokenizerConfigs {
+	for _, tokenizer := range config.tokenizerConfigs {
 		switch tokenizer.Type {
 		case tantivy_go.TokenizerSimple:
-			err = tc.RegisterTextAnalyzerSimple(tokenizer.Type, tokenizer.Args[0].(uintptr), tokenizer.Args[1].(string))
+			err = tc.RegisterTextAnalyzerSimple(tokenizer.Type, tokenizer.args[0].(uintptr), tokenizer.args[1].(string))
 		case tantivy_go.TokenizerJieba:
-			err = tc.RegisterTextAnalyzerJieba(tokenizer.Type, tokenizer.Args[0].(uintptr))
+			err = tc.RegisterTextAnalyzerJieba(tokenizer.Type, tokenizer.args[0].(uintptr))
 		case tantivy_go.TokenizerEdgeNgram:
-			err = tc.RegisterTextAnalyzerEdgeNgram(tokenizer.Type, tokenizer.Args[0].(uintptr), tokenizer.Args[1].(uintptr), tokenizer.Args[2].(uintptr))
+			err = tc.RegisterTextAnalyzerEdgeNgram(tokenizer.Type, tokenizer.args[0].(uintptr), tokenizer.args[1].(uintptr), tokenizer.args[2].(uintptr))
 		case tantivy_go.TokenizerNgram:
-			err = tc.RegisterTextAnalyzerNgram(tokenizer.Type, tokenizer.Args[0].(uintptr), tokenizer.Args[1].(uintptr), tokenizer.Args[2].(bool))
+			err = tc.RegisterTextAnalyzerNgram(tokenizer.Type, tokenizer.args[0].(uintptr), tokenizer.args[1].(uintptr), tokenizer.args[2].(bool))
 		case tantivy_go.TokenizerRaw:
 			err = tc.RegisterTextAnalyzerRaw(tokenizer.Type)
 		}
