@@ -141,9 +141,15 @@ impl<'de> Deserialize<'de> for QueryElement {
                     .get("query")
                     .and_then(|q| q.get("subqueries"))
                     .ok_or_else(|| serde::de::Error::missing_field("subqueries"))?;
+                let boost = map
+                    .get("query")
+                    .and_then(|q| q.get("boost"))
+                    .and_then(|v| v.as_f64().map(|f| f as f32))
+                    .ok_or_else(|| serde::de::Error::missing_field("boost"))?;
                 Some(GoQuery::BoolQuery {
                     subqueries: serde_json::from_value(subqueries.clone())
                         .map_err(serde::de::Error::custom)?,
+                    boost,
                 })
             }
             QueryType::PhraseQuery | QueryType::PhrasePrefixQuery | QueryType::TermPrefixQuery

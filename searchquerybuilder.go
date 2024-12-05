@@ -34,6 +34,7 @@ type QueryElement struct {
 
 type BooleanQuery struct {
 	Subqueries []QueryElement `json:"subqueries"`
+	Boost      float64        `json:"boost"`
 }
 
 type FinalQuery struct {
@@ -108,10 +109,11 @@ func (qb *QueryBuilder) Query(modifier QueryModifier, field string, text string,
 	return qb
 }
 
-func (qb *QueryBuilder) BooleanQuery(modifier QueryModifier, subBuilder *QueryBuilder) *QueryBuilder {
+func (qb *QueryBuilder) BooleanQuery(modifier QueryModifier, subBuilder *QueryBuilder, boost float64) *QueryBuilder {
 	qb.subqueries = append(qb.subqueries, QueryElement{
 		Query: &BooleanQuery{
 			Subqueries: subBuilder.subqueries,
+			Boost:      boost,
 		},
 		Modifier:  modifier,
 		QueryType: BoolQuery,

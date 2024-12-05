@@ -17,17 +17,16 @@ pub fn extract_terms(
     index: &Index,
     field: Field,
     query: &str,
-) -> Result<(Vec<Term>), Box<dyn Error>> {
+) -> Result<(Vec<(usize, Term)>), Box<dyn Error>> {
     let mut tokenizer = index.tokenizer_for_field(field)?;
     let mut token_stream = tokenizer.token_stream(query);
     let mut terms = Vec::new();
     token_stream
-        .process(&mut |token: &Token| terms.push(Term::from_field_text(field, &token.text)));
-    debug!("## Terms: {:?}", terms);
+        .process(&mut |token: &Token| terms.push((token.position, Term::from_field_text(field, &token.text))));
     if terms.len() > 0 {
         Ok(terms)
     } else {
-        Err("Zero terms".into())
+        Err("Zero terms were extracted".into())
     }
 }
 

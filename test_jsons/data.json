@@ -5,7 +5,9 @@
     "another term",
     "term2",
     "term3",
-    "not single term"
+    "not single term",
+    "sample three words",
+    "one"
   ],
   "fields": [
     "body1",
@@ -96,17 +98,56 @@
                     },
                     "query_modifier": 0,
                     "query_type": 1
+                  },
+                  {
+                    "query": {
+                      "field_index": 0,
+                      "text_index": 6,
+                      "boost": 0.4
+                    },
+                    "query_modifier": 2,
+                    "query_type": 5
                   }
-                ]
+                ],
+                "boost": 0.3
               },
               "query_modifier": 1,
               "query_type": 0
             }
-          ]
+          ],
+          "boost": 1
         },
         "query_modifier": 0,
         "query_type": 0
+      },
+      {
+        "query": {
+          "field_index": 1,
+          "text_index": 6,
+          "boost": 1
+        },
+        "query_modifier": 0,
+        "query_type": 6
+      },
+      {
+        "query": {
+          "field_index": 1,
+          "text_index": 7,
+          "boost": 1
+        },
+        "query_modifier": 0,
+        "query_type": 1
+      },
+      {
+        "query": {
+          "field_index": 1,
+          "text_index": 7,
+          "boost": 1
+        },
+        "query_modifier": 0,
+        "query_type": 4
       }
-    ]
+    ],
+    "boost": 0
   }
 }

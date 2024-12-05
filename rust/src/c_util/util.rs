@@ -519,8 +519,6 @@ pub fn search(
         }
     };
 
-    debug!("### cvt2: {:#?}", query);
-
     let top_docs =
         match searcher.search(&query, &tantivy::collector::TopDocs::with_limit(docs_limit)) {
             Ok(top_docs) => top_docs,
@@ -534,8 +532,6 @@ pub fn search(
     for (score, doc_address) in top_docs {
         match searcher.doc::<TantivyDocument>(doc_address) {
             Ok(doc) => {
-                // let explanation = query.explain(&searcher, doc_address).expect("can;t explain");
-                // debug!("### cvt2: {:#?}", explanation);
                 let highlights =
                     match find_highlights(with_highlights, &searcher, &query, &doc, schema.clone())
                     {
@@ -546,7 +542,6 @@ pub fn search(
                         }
                     };
 
-                debug!("## cvtdoc: {:#?}", doc);
                 documents.push(Document {
                     tantivy_doc: doc,
                     highlights,
@@ -588,7 +583,6 @@ pub fn search_json(
         }
     };
 
-    debug!("### cvt: {:#?}", query);
     let top_docs =
         match searcher.search(&query, &tantivy::collector::TopDocs::with_limit(docs_limit)) {
             Ok(top_docs) => top_docs,
@@ -598,14 +592,10 @@ pub fn search_json(
             }
         };
 
-    debug!("### td: {:#?}", top_docs);
-
     let mut documents = Vec::new();
     for (score, doc_address) in top_docs {
         match searcher.doc::<TantivyDocument>(doc_address) {
             Ok(doc) => {
-                // let explanation = query.explain(&searcher, doc_address).expect("can;t explain");
-                // debug!("### cvt: {:#?}", explanation);
                 let highlights =
                     match find_highlights(with_highlights, &searcher, &query, &doc, schema.clone())
                     {

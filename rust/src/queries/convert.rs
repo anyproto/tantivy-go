@@ -52,12 +52,12 @@ fn convert_to_tantivy(
                             occur,
                             *boost,
                             Box::new(TermQuery::new(
-                                terms[0].clone(),
+                                terms[0].1.clone(),
                                 IndexRecordOption::WithFreqsAndPositions,
                             )),
                         )
                     } else {
-                        try_boost(occur, *boost, Box::new(PhraseQuery::new(terms)))
+                        try_boost(occur, *boost, Box::new(PhraseQuery::new_with_offset(terms)))
                     }
                 }
 
@@ -68,7 +68,7 @@ fn convert_to_tantivy(
                 } => {
                     let (field, text) = process_field_and_text(*field_index, *text_index)?;
                     let terms = extract_terms(&index, field, text)?;
-                    try_boost(occur, *boost, Box::new(PhrasePrefixQuery::new(terms)))
+                    try_boost(occur, *boost, Box::new(PhrasePrefixQuery::new_with_offset(terms)))
                 }
 
                 GoQuery::TermPrefixQuery {
@@ -81,7 +81,7 @@ fn convert_to_tantivy(
                     try_boost(
                         occur,
                         *boost,
-                        Box::new(PhrasePrefixQuery::new(vec![terms[0].clone()])),
+                        Box::new(PhrasePrefixQuery::new(vec![terms[0].1.clone()])),
                     )
                 }
 
@@ -96,7 +96,7 @@ fn convert_to_tantivy(
                         occur,
                         *boost,
                         Box::new(TermQuery::new(
-                            terms[0].clone(),
+                            terms[0].1.clone(),
                             IndexRecordOption::WithFreqs,
                         )),
                     )
@@ -114,7 +114,7 @@ fn convert_to_tantivy(
                         let result = try_boost(
                             Must,
                             1.0,
-                            Box::new(TermQuery::new(term.clone(), IndexRecordOption::WithFreqs)),
+                            Box::new(TermQuery::new(term.1.clone(), IndexRecordOption::WithFreqs)),
                         )?;
                         post_terms.push(result);
                     }
@@ -134,7 +134,7 @@ fn convert_to_tantivy(
                         let result = try_boost(
                             Should,
                             1.0 - 0.5f32 * (i + 1) as f32 / terms.len() as f32,
-                            Box::new(TermQuery::new(term.clone(), IndexRecordOption::WithFreqs)),
+                            Box::new(TermQuery::new(term.1.clone(), IndexRecordOption::WithFreqs)),
                         )?;
                         post_terms.push(result);
                     }
@@ -142,13 +142,12 @@ fn convert_to_tantivy(
                     try_boost(occur, *boost, Box::new(BooleanQuery::new(post_terms)))
                 }
 
-                GoQuery::BoolQuery { subqueries } => {
+                GoQuery::BoolQuery { subqueries, boost } => {
                     let mut sub_queries = vec![];
                     for subquery in subqueries {
                         sub_queries.push(element_to_query(index, subquery, schema, texts, fields)?);
                     }
-                    let bool_query = BooleanQuery::from(sub_queries);
-                    Ok((occur, Box::new(bool_query)))
+                    try_boost(occur, *boost, Box::new(BooleanQuery::new(sub_queries)))
                 }
 
                 _ => Err("Unsupported GoQuery variant".into()),
@@ -204,20 +203,17 @@ pub fn parse_query_from_json(
     result
 }
 
-mod for_tests {
-    use crate::queries::GoQuery::BoolQuery;
-    use crate::queries::{FinalQuery, GoQuery, QueryElement, QueryModifier};
-}
-
 #[cfg(test)]
 mod tests {
     use crate::queries::convert::convert_to_tantivy;
     use crate::queries::models::BoolQuery;
+    use crate::queries::GoQuery::TermQuery;
     use crate::queries::QueryModifier::Must;
     use crate::queries::QueryType::PhraseQuery;
     use crate::queries::{FinalQuery, GoQuery, QueryElement, QueryModifier};
     use std::fs;
     use tantivy::query::PhraseQuery as TPhraseQuery;
+    use tantivy::query::TermQuery as TTermQuery;
     use tantivy::query::{BooleanQuery, PhrasePrefixQuery};
     use tantivy::query::{BoostQuery, Occur as TO};
     use tantivy::query::{PhrasePrefixQuery as TPhrasePrefixQuery, Query};
@@ -237,6 +233,8 @@ mod tests {
                 "term2",
                 "term3",
                 "not single term",
+                "sample three words",
+                "one"
             ]
             .into_iter()
             .map(|t| t.to_string())
@@ -310,18 +308,54 @@ mod tests {
                                 },
                                 QueryElement {
                                     query: Some(GoQuery::BoolQuery {
-                                        subqueries: Vec::from([QueryElement {
-                                            query: Some(GoQuery::PhraseQuery {
-                                                field_index: 7,
-                                                text_index: 5,
-                                                boost: 0.8,
-                                            }),
-                                            modifier: QueryModifier::Must,
-                                        }]),
+                                        subqueries: Vec::from([
+                                            QueryElement {
+                                                query: Some(GoQuery::PhraseQuery {
+                                                    field_index: 7,
+                                                    text_index: 5,
+                                                    boost: 0.8,
+                                                }),
+                                                modifier: QueryModifier::Must,
+                                            },
+                                            QueryElement {
+                                                query: Some(GoQuery::EveryTermQuery {
+                                                    field_index: 0,
+                                                    text_index: 6,
+                                                    boost: 0.4,
+                                                }),
+                                                modifier: QueryModifier::MustNot,
+                                            },
+                                        ]),
+                                        boost: 0.3f32,
                                     }),
                                     modifier: QueryModifier::Should,
                                 },
                             ]),
+                            boost: 1f32,
+                        }),
+                        modifier: QueryModifier::Must,
+                    },
+                    QueryElement {
+                        query: Some(GoQuery::OneOfTermQuery {
+                            field_index: 1,
+                            text_index: 6,
+                            boost: 1f32,
+                        }),
+                        modifier: QueryModifier::Must,
+                    },
+                    QueryElement {
+                        query: Some(GoQuery::PhraseQuery {
+                            field_index: 1,
+                            text_index: 7,
+                            boost: 1f32,
+                        }),
+                        modifier: QueryModifier::Must,
+                    },
+                    QueryElement {
+                        query: Some(GoQuery::TermQuery {
+                            field_index: 1,
+                            text_index: 7,
+                            boost: 1f32,
                         }),
                         modifier: QueryModifier::Must,
                     },
@@ -338,7 +372,7 @@ mod tests {
         let expected: FinalQuery = expected_query();
         let parsed: FinalQuery = serde_json::from_str(&contents).expect("Json was not parsed");
 
-        assert_eq!(expected, parsed);
+        assert_eq!(parsed, expected);
     }
 
     #[test]
@@ -390,16 +424,102 @@ mod tests {
                     (TO::Should, phrase_prefix_query(summary, vec!["term3"])),
                     (
                         TO::Should,
-                        Box::new(BooleanQuery::new(vec![(
-                            TO::Must,
-                            boost_query(phrase_query(comments, vec!["not", "single", "term"]), 0.8),
-                        )])),
+                        Box::new(BoostQuery::new(
+                            Box::new(BooleanQuery::new(vec![
+                                (
+                                    TO::Must,
+                                    boost_query(
+                                        phrase_query(comments, vec!["not", "single", "term"]),
+                                        0.8,
+                                    ),
+                                ),
+                                (
+                                    TO::MustNot,
+                                    Box::new(BoostQuery::new(
+                                        Box::new(BooleanQuery::new(vec![
+                                            (
+                                                TO::Must,
+                                                Box::new(TTermQuery::new(
+                                                    Term::from_field_text(body1, "sample"),
+                                                    IndexRecordOption::WithFreqs,
+                                                )),
+                                            ),
+                                            (
+                                                TO::Must,
+                                                Box::new(TTermQuery::new(
+                                                    Term::from_field_text(body1, "three"),
+                                                    IndexRecordOption::WithFreqs,
+                                                )),
+                                            ),
+                                            (
+                                                TO::Must,
+                                                Box::new(TTermQuery::new(
+                                                    Term::from_field_text(body1, "words"),
+                                                    IndexRecordOption::WithFreqs,
+                                                )),
+                                            ),
+                                        ])),
+                                        0.4f32,
+                                    )),
+                                ),
+                            ])),
+                            0.3f32,
+                        )),
                     ),
                 ])),
             ),
+            (
+                TO::Must,
+                Box::new(BooleanQuery::new(vec![
+                    (
+                        TO::Should,
+                        Box::new(BoostQuery::new(
+                            Box::new(TTermQuery::new(
+                                Term::from_field_text(body2, "sample"),
+                                IndexRecordOption::WithFreqs,
+                            )),
+                            0.8333333f32,
+                        )),
+                    ),
+                    (
+                        TO::Should,
+                        Box::new(BoostQuery::new(
+                            Box::new(TTermQuery::new(
+                                Term::from_field_text(body2, "three"),
+                                IndexRecordOption::WithFreqs,
+                            )),
+                            0.6666666f32,
+                        )),
+                    ),
+                    (
+                        TO::Should,
+                        Box::new(BoostQuery::new(
+                            Box::new(TTermQuery::new(
+                                Term::from_field_text(body2, "words"),
+                                IndexRecordOption::WithFreqs,
+                            )),
+                            0.5f32,
+                        )),
+                    ),
+                ])),
+            ),
+            (
+                TO::Must,
+                Box::new(TTermQuery::new(
+                    Term::from_field_text(body2, "one"),
+                    IndexRecordOption::WithFreqs,
+                )),
+            ),
+            (
+                TO::Must,
+                Box::new(TTermQuery::new(
+                    Term::from_field_text(body2, "one"),
+                    IndexRecordOption::WithFreqs,
+                )),
+            ),
         ]);
 
-        assert_eq!(format!("{expected:#?}"), format!("{parsed:#?}"));
+        assert_eq!(format!("{parsed:#?}"), format!("{expected:#?}"));
     }
 
     fn make_terms(field: Field, words: Vec<&str>) -> Vec<Term> {
@@ -410,6 +530,10 @@ mod tests {
     }
 
     fn phrase_query(field: Field, words: Vec<&str>) -> Box<TPhraseQuery> {
+        Box::new(TPhraseQuery::new(make_terms(field, words)))
+    }
+
+    fn every_term_query(field: Field, words: Vec<&str>) -> Box<TPhraseQuery> {
         Box::new(TPhraseQuery::new(make_terms(field, words)))
     }
 

@@ -1,6 +1,6 @@
-use std::fmt;
-use serde::{Deserialize, Deserializer, Serialize};
 use serde::de::Visitor;
+use serde::{Deserialize, Deserializer, Serialize};
+use std::fmt;
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -23,12 +23,12 @@ pub enum QueryModifier {
     MustNot,
 }
 
-
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum GoQuery {
     BoolQuery {
         subqueries: Vec<QueryElement>,
+        boost: f32,
     },
     PhraseQuery {
         field_index: usize,
@@ -50,18 +50,17 @@ pub enum GoQuery {
         text_index: usize,
         boost: f32,
     },
-    EveryTermQuery{
+    EveryTermQuery {
         field_index: usize,
         text_index: usize,
         boost: f32,
     },
-    OneOfTermQuery{
+    OneOfTermQuery {
         field_index: usize,
         text_index: usize,
         boost: f32,
     },
 }
-
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
