@@ -1,9 +1,6 @@
-use crate::queries::models::BoolQuery;
 use crate::queries::{FinalQuery, GoQuery, QueryElement, QueryModifier};
 use crate::tantivy_util::extract_terms;
-use log::debug;
 use std::error::Error;
-use std::{env, fmt, fs};
 use tantivy::query::Occur::{Must, Should};
 use tantivy::query::{
     BooleanQuery, BoostQuery, Occur, PhrasePrefixQuery, PhraseQuery, Query, TermQuery,
@@ -110,7 +107,7 @@ fn convert_to_tantivy(
                     let (field, text) = process_field_and_text(*field_index, *text_index)?;
                     let terms = extract_terms(&index, field, text)?;
                     let mut post_terms = vec![];
-                    for (i, term) in terms.iter().enumerate() {
+                    for (_, term) in terms.iter().enumerate() {
                         let result = try_boost(
                             Must,
                             1.0,
@@ -149,8 +146,6 @@ fn convert_to_tantivy(
                     }
                     try_boost(occur, *boost, Box::new(BooleanQuery::new(sub_queries)))
                 }
-
-                _ => Err("Unsupported GoQuery variant".into()),
             }
         } else {
             Err("Query is None in QueryElement".into())
@@ -207,19 +202,16 @@ pub fn parse_query_from_json(
 mod tests {
     use crate::queries::convert::convert_to_tantivy;
     use crate::queries::models::BoolQuery;
-    use crate::queries::GoQuery::TermQuery;
-    use crate::queries::QueryModifier::Must;
-    use crate::queries::QueryType::PhraseQuery;
     use crate::queries::{FinalQuery, GoQuery, QueryElement, QueryModifier};
     use std::fs;
     use tantivy::query::PhraseQuery as TPhraseQuery;
     use tantivy::query::TermQuery as TTermQuery;
-    use tantivy::query::{BooleanQuery, PhrasePrefixQuery};
+    use tantivy::query::BooleanQuery;
     use tantivy::query::{BoostQuery, Occur as TO};
     use tantivy::query::{PhrasePrefixQuery as TPhrasePrefixQuery, Query};
     use tantivy::schema::{Field, IndexRecordOption, Schema, TextFieldIndexing, STORED, TEXT};
     use tantivy::tokenizer::{
-        AsciiFoldingFilter, Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer,
+        SimpleTokenizer,
         TextAnalyzer,
     };
     use tantivy::{Index, Term};
@@ -530,10 +522,6 @@ mod tests {
     }
 
     fn phrase_query(field: Field, words: Vec<&str>) -> Box<TPhraseQuery> {
-        Box::new(TPhraseQuery::new(make_terms(field, words)))
-    }
-
-    fn every_term_query(field: Field, words: Vec<&str>) -> Box<TPhraseQuery> {
         Box::new(TPhraseQuery::new(make_terms(field, words)))
     }
 

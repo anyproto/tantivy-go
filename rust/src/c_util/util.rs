@@ -1,12 +1,10 @@
 use crate::config;
-use crate::queries::{parse_query_from_json, FinalQuery, GoQuery, QueryElement, QueryModifier};
+use crate::queries::{parse_query_from_json};
 use crate::tantivy_util::{
-    convert_document_to_json, extract_terms, find_highlights, get_string_field_entry, Document,
+    convert_document_to_json, find_highlights, get_string_field_entry, Document,
     SearchResult, TantivyContext, DOCUMENT_BUDGET_BYTES,
 };
 use log::debug;
-use serde::de::Visitor;
-use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -17,12 +15,9 @@ use std::panic::PanicInfo;
 use std::path::Path;
 use std::{fmt, fs, panic, slice};
 use tantivy::directory::MmapDirectory;
-use tantivy::query::{
-    BooleanQuery, BoostQuery, Occur, PhrasePrefixQuery, PhraseQuery, Query, QueryParser,
-};
-use tantivy::query_grammar::parse_query;
 use tantivy::schema::{Field, Schema};
 use tantivy::{Index, IndexWriter, Score, TantivyDocument, TantivyError, Term};
+use tantivy::query::QueryParser;
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {

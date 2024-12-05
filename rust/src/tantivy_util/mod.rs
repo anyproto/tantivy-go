@@ -25,5 +25,4 @@ pub use self::tokenizer::register_raw_tokenizer;
 pub use self::tokenizer::register_ngram_tokenizer;
 pub use self::util::extract_text_from_owned_value;
 pub use self::util::extract_terms;
-pub use self::util::TantivyGoError;
 pub use self::util::DOCUMENT_BUDGET_BYTES;

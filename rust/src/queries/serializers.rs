@@ -3,7 +3,6 @@ use crate::queries::QueryType;
 use serde::de::Visitor;
 use serde::{de, Deserialize, Deserializer};
 use std::fmt;
-use tantivy::schema::Value;
 
 impl QueryType {
     fn from_u64(value: u64) -> Option<Self> {
@@ -191,7 +190,6 @@ impl<'de> Deserialize<'de> for QueryElement {
                     _ => return Err(de::Error::custom("Unknown query type")),
                 })
             }
-            QueryType::None => None,
         };
 
         Ok(QueryElement { query, modifier })

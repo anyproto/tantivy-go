@@ -1,6 +1,4 @@
-use serde::de::Visitor;
-use serde::{Deserialize, Deserializer, Serialize};
-use std::fmt;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -11,8 +9,7 @@ pub enum QueryType {
     TermPrefixQuery,
     TermQuery,
     EveryTermQuery,
-    OneOfTermQuery,
-    None,
+    OneOfTermQuery
 }
 
 #[derive(Serialize, Debug, PartialEq)]

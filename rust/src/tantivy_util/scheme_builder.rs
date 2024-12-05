@@ -1,4 +1,3 @@
-use log::debug;
 use tantivy::schema::{FAST, IndexRecordOption, SchemaBuilder, STORED, STRING, TEXT, TextFieldIndexing};
 
 pub fn add_text_field(
