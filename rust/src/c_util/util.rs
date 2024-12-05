@@ -1,6 +1,9 @@
 use crate::config;
-use crate::queries::{parse_query_from_json};
-use crate::tantivy_util::{convert_document_to_json, find_highlights, get_string_field_entry, Document, SearchResult, TantivyContext, TantivyGoError, DOCUMENT_BUDGET_BYTES};
+use crate::queries::parse_query_from_json;
+use crate::tantivy_util::{
+    convert_document_to_json, find_highlights, get_string_field_entry, Document, SearchResult,
+    TantivyContext, TantivyGoError, DOCUMENT_BUDGET_BYTES,
+};
 use log::debug;
 use serde_json::json;
 use std::borrow::Cow;
@@ -12,9 +15,9 @@ use std::panic::PanicInfo;
 use std::path::Path;
 use std::{fs, panic, slice};
 use tantivy::directory::MmapDirectory;
+use tantivy::query::{Query, QueryParser};
 use tantivy::schema::{Field, Schema};
 use tantivy::{Index, IndexWriter, Score, TantivyDocument, TantivyError, Term};
-use tantivy::query::QueryParser;
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {
@@ -441,7 +444,7 @@ pub fn add_field<'a>(
     doc.tantivy_doc.add_text(field, field_value);
 }
 
-pub fn search(
+/*pub fn search(
     field_names_ptr: *mut *const c_char,
     field_weights_ptr: *mut c_float,
     field_names_len: usize,
@@ -613,6 +616,168 @@ pub fn search_json(
 
     let size = documents.len();
     Ok(Box::into_raw(Box::new(SearchResult { documents, size })))
+}*/
+
+fn perform_search<F>(
+    query_parser_fn: F,
+    error_buffer: *mut *mut c_char,
+    docs_limit: usize,
+    context: &mut TantivyContext,
+    with_highlights: bool,
+) -> Result<*mut SearchResult, ()>
+where
+    F: FnOnce(&Index)-> Result<Box<dyn Query>, String>,
+{
+    let searcher = &context.reader().searcher();
+    let schema = context.index.schema();
+
+    // Парсинг запроса
+    let query = match query_parser_fn(&context.index) {
+        Ok(query) => query,
+        Err(err) => {
+            set_error(&err, error_buffer);
+            return Err(());
+        }
+    };
+
+    // Выполнение поиска
+    let top_docs =
+        match searcher.search(&query, &tantivy::collector::TopDocs::with_limit(docs_limit)) {
+            Ok(top_docs) => top_docs,
+            Err(err) => {
+                set_error(&err.to_string(), error_buffer);
+                return Err(());
+            }
+        };
+
+    // Обработка документов
+    let mut documents = Vec::new();
+    for (score, doc_address) in top_docs {
+        match searcher.doc::<TantivyDocument>(doc_address) {
+            Ok(doc) => {
+                let highlights =
+                    match find_highlights(with_highlights, &searcher, &query, &doc, schema.clone())
+                    {
+                        Ok(highlights) => highlights,
+                        Err(err) => {
+                            set_error(&err.to_string(), error_buffer);
+                            return Err(());
+                        }
+                    };
+                documents.push(Document {
+                    tantivy_doc: doc,
+                    highlights,
+                    score,
+                });
+            }
+
+            Err(err) => {
+                set_error(&err.to_string(), error_buffer);
+                return Err(());
+            }
+        };
+    }
+
+    let size = documents.len();
+    Ok(Box::into_raw(Box::new(SearchResult { documents, size })))
+}
+
+pub fn search(
+    field_names_ptr: *mut *const c_char,
+    field_weights_ptr: *mut c_float,
+    field_names_len: usize,
+    query_ptr: *const c_char,
+    error_buffer: *mut *mut c_char,
+    docs_limit: usize,
+    context: &mut TantivyContext,
+    with_highlights: bool,
+) -> Result<*mut SearchResult, ()> {
+    let schema = context.index.schema();
+
+    let mut fields = Vec::with_capacity(field_names_len);
+    if process_string_slice(
+        field_names_ptr,
+        error_buffer,
+        field_names_len,
+        |field_name| {
+            schema_apply_for_field::<(), (), _>(
+                error_buffer,
+                schema.clone(),
+                field_name,
+                |field, _| {
+                    fields.push(field);
+                    Ok(())
+                },
+            )
+        },
+    )
+    .is_err()
+    {
+        return Err(());
+    }
+
+    let mut weights = HashMap::with_capacity(field_names_len);
+    if process_slice(
+        field_weights_ptr,
+        error_buffer,
+        field_names_len,
+        |i, field_weight| {
+            weights.insert(fields[i], field_weight);
+            Ok(())
+        },
+    )
+    .is_err()
+    {
+        return Err(());
+    }
+
+    let query_str = match assert_string(query_ptr, error_buffer) {
+        Some(value) => value,
+        None => return Err(()),
+    };
+
+    perform_search(
+        |index: &Index| {
+            let mut query_parser = QueryParser::for_index(index, fields);
+            for (field, weight) in weights {
+                query_parser.set_field_boost(field, weight as Score);
+            }
+            query_parser
+                .parse_query(query_str.as_str())
+                .map_err(|e| e.to_string())
+        },
+        error_buffer,
+        docs_limit,
+        context,
+        with_highlights,
+    )
+}
+
+pub fn search_json(
+    query_ptr: *const c_char,
+    error_buffer: *mut *mut c_char,
+    docs_limit: usize,
+    context: &mut TantivyContext,
+    with_highlights: bool,
+) -> Result<*mut SearchResult, Box<dyn Error>> {
+    let schema = context.index.schema();
+
+    let query_str = match assert_string(query_ptr, error_buffer) {
+        Some(value) => value,
+        None => return Err(Box::new(TantivyGoError("assert_string error".to_string()))),
+    };
+
+    Ok(perform_search(
+        |index: &Index| {
+            parse_query_from_json(index, &schema, &query_str)
+                .map_err(|e| e.to_string())
+        },
+        error_buffer,
+        docs_limit,
+        context,
+        with_highlights,
+    )
+    .map_err(|_| Box::new(TantivyGoError("Search failed".to_string())))?)
 }
 
 pub fn drop_any<T>(ptr: *mut T) {
