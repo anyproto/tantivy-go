@@ -20,6 +20,7 @@ const NameTitleZh = "titleZh"
 
 const limit = 40
 const minGram = 2
+const maxGram = 4
 
 type DocSample struct {
 	Title      string
@@ -101,6 +102,104 @@ func Test(t *testing.T) {
 		require.Equal(t, uint64(0), docs)
 	})
 
+	t.Run("docs search - when ngram", func(t *testing.T) {
+		schema, tc := fx(t, limit, 1, false, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "Douglas DC-9", "", "1", tc)
+		require.NoError(t, err)
+		doc2, err := addDoc(t, "Werfer", "", "2", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc, doc2)
+		require.NoError(t, err)
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("dc-9").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+
+		result, err := tc.Search(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		require.Equal(t, 1, int(size))
+
+		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+			var doc DocSample
+			return doc, json.Unmarshal([]byte(jsonStr), &doc)
+		}, NameId, NameTitle, NameBody)
+		require.NoError(t, err)
+
+		require.Equal(t, len(results), int(size))
+		require.NoError(t, err)
+
+		for next := range results {
+			model := results[next].(DocSample)
+			require.Equal(t, DocSample{
+				"Douglas DC-9",
+				"1",
+				"",
+				[]Highlight{},
+			},
+				model)
+		}
+	})
+
+	t.Run("docs search - when ngram json", func(t *testing.T) {
+		schema, tc := fx(t, limit, 1, true, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "Douglas DC-9", "", "bafyreiarbtedoyhl54gspq7weophjxspexdlh2gr7cgjpl4bbqxefhb6p4.1lx08wya7kx2k", tc)
+		require.NoError(t, err)
+		doc2, err := addDoc(t, "Werfer", "", "2", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc, doc2)
+		require.NoError(t, err)
+		build := tantivy_go.NewQueryBuilder().
+			Query(tantivy_go.Must, NameId, "bafyreiarbtedoyhl54gspq7weophjxspexdlh2gr7cgjpl4bbqxefhb6p4.1lx08wya7kx2k", tantivy_go.TermQuery, 1.0).
+			Query(tantivy_go.Must, NameTitle, "dc-9", tantivy_go.PhraseQuery, 1.0).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&build).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+
+		result, err := tc.SearchJson(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		require.Equal(t, 1, int(size))
+
+		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+			var doc DocSample
+			return doc, json.Unmarshal([]byte(jsonStr), &doc)
+		}, NameId, NameTitle, NameBody)
+		require.NoError(t, err)
+
+		require.Equal(t, len(results), int(size))
+		require.NoError(t, err)
+
+		for next := range results {
+			model := results[next].(DocSample)
+			require.Equal(t, DocSample{
+				"Douglas DC-9",
+				"bafyreiarbtedoyhl54gspq7weophjxspexdlh2gr7cgjpl4bbqxefhb6p4.1lx08wya7kx2k",
+				"",
+				[]Highlight{},
+			},
+				model)
+		}
+	})
+
 	t.Run("docs remove - when by body token", func(t *testing.T) {
 		_, tc := fx(t, limit, minGram, false, false)
 
@@ -170,7 +269,14 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search and remove - when thai", func(t *testing.T) {
-		_, tc := fx(t, limit, 1, false, false)
+		_, tc := fxWithConfig(t, defaultTokenizerConfig().apply(func(tc *tantivyConfig) {
+			tc.modifyField(NameTitle, func(field *fieldConfig) {
+				field.tokenizer = tantivy_go.TokenizerEdgeNgram
+			})
+			tc.modifyTokenizer(tantivy_go.TokenizerEdgeNgram, func(tci *tokenizerConfigItem) {
+				tci.args[0] = uintptr(1)
+			})
+		}))
 
 		defer tc.Free()
 
@@ -405,8 +511,12 @@ func Test(t *testing.T) {
 		require.Error(t, err, "invalid utf-8 sequence of 1 bytes from index 5")
 	})
 
-	t.Run("docs search and remove - when title", func(t *testing.T) {
-		schema, tc := fx(t, limit, minGram, false, false)
+	t.Run("docs search and remove - when title and edge", func(t *testing.T) {
+		schema, tc := fxWithConfig(t, defaultTokenizerConfig().apply(func(tc *tantivyConfig) {
+			tc.modifyField(NameTitle, func(field *fieldConfig) {
+				field.tokenizer = tantivy_go.TokenizerEdgeNgram
+			})
+		}))
 
 		defer tc.Free()
 
@@ -465,6 +575,66 @@ func Test(t *testing.T) {
 		require.Equal(t, uint64(0), docs)
 	})
 
+	t.Run("docs search and remove - when title and ngram", func(t *testing.T) {
+		schema, tc := fx(t, limit, minGram, false, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "Create Body", "Example title content.", "1", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("create").
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+		result, err := tc.Search(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		require.Equal(t, 1, int(size))
+
+		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+			var doc DocSample
+			return doc, json.Unmarshal([]byte(jsonStr), &doc)
+		}, NameId, NameTitle, NameBody)
+		require.NoError(t, err)
+
+		require.Equal(t, len(results), int(size))
+		require.NoError(t, err)
+
+		for next := range results {
+			model := results[next].(DocSample)
+			require.Equal(t, DocSample{
+				"Create Body",
+				"1",
+				"Example title content.",
+				[]Highlight{
+					{
+						NameTitle,
+						Fragment{
+							[][2]int{{0, 2}, {0, 3}, {0, 4}, {1, 3}, {1, 4}, {1, 5}, {2, 4}, {2, 5}, {2, 6}, {3, 5}, {3, 6}, {4, 6}},
+							"Create Body",
+						},
+					}},
+			},
+				model)
+		}
+
+		docs, err := tc.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), docs)
+
+		err = tc.DeleteDocuments(NameId, "1")
+		require.NoError(t, err)
+		docs, err = tc.NumDocs()
+		require.Equal(t, uint64(0), docs)
+	})
+
 	t.Run("docs search - when jieba", func(t *testing.T) {
 		_, tc := fx(t, limit, 1, false, false)
 
@@ -496,6 +666,85 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		defer result.Free()
 		require.Equal(t, 2, int(size))
+	})
+
+	t.Run("correct search query parse", func(t *testing.T) {
+		qb := tantivy_go.NewQueryBuilder()
+
+		finalQuery := qb.
+			Query(tantivy_go.Must, "body1", "some words", tantivy_go.PhraseQuery, 1.0).
+			Query(tantivy_go.Should, "body2", "term", tantivy_go.PhrasePrefixQuery, 1.0).
+			Query(tantivy_go.MustNot, "body3", "term", tantivy_go.TermPrefixQuery, 1.0).
+			Query(tantivy_go.Must, "title1", "another term", tantivy_go.PhraseQuery, 0.1).
+			Query(tantivy_go.Should, "title2", "term2", tantivy_go.PhrasePrefixQuery, 0.1).
+			Query(tantivy_go.MustNot, "title3", "term2", tantivy_go.TermPrefixQuery, 0.1).
+			BooleanQuery(tantivy_go.Must, qb.NestedBuilder().
+				Query(tantivy_go.Should, "summary", "term3", tantivy_go.PhrasePrefixQuery, 1.0).
+				BooleanQuery(tantivy_go.Should, qb.NestedBuilder().
+					Query(tantivy_go.Must, "comments", "not single term", tantivy_go.PhraseQuery, 0.8).
+					Query(tantivy_go.MustNot, "body1", "sample three words", tantivy_go.EveryTermQuery, 0.4),
+					0.3,
+				),
+				1.0,
+			).
+			Query(tantivy_go.Must, "body2", "sample three words", tantivy_go.OneOfTermQuery, 1.0).
+			Query(tantivy_go.Must, "body2", "one", tantivy_go.PhraseQuery, 1.0).
+			Query(tantivy_go.Must, "body2", "one", tantivy_go.TermQuery, 1.0).
+			Build()
+
+		expected, err := os.ReadFile("./test_jsons/data.json")
+		require.NoError(t, err)
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&finalQuery).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			Build()
+
+		require.JSONEq(t, string(expected), sCtx.GetQuery())
+	})
+
+	t.Run("docs search query - when prefix", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, false, false)
+
+		defer tc.Free()
+
+		doc, err := addDoc(t, "", "gaszählerstand", "id1", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		finalQuery := tantivy_go.NewQueryBuilder().
+			Query(tantivy_go.Must, NameBody, "gaszä", tantivy_go.TermPrefixQuery, 1.0).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&finalQuery).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			Build()
+
+		result, err := tc.SearchJson(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		defer result.Free()
+		require.Equal(t, 1, int(size))
+
+		sCtx2 := tantivy_go.NewSearchContextBuilder().
+			SetQuery("gaszä").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameBody).
+			Build()
+
+		result2, err := tc.Search(sCtx2)
+		require.NoError(t, err)
+
+		size2, err := result2.GetSize()
+		defer result2.Free()
+		require.Equal(t, 0, int(size2))
 	})
 
 	t.Run("docs search - when weights apply", func(t *testing.T) {
@@ -533,14 +782,14 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		jsonStr, err := resDoc.ToJson(schema, NameId)
 		require.NoError(t, err)
-		require.JSONEq(t, `{"highlights":[],"id":"id1","score":1.9676434993743896}`, jsonStr)
+		require.JSONEq(t, `{"highlights":[],"id":"id1","score":6.886753559112549}`, jsonStr)
 
 		sCtx2 := tantivy_go.NewSearchContextBuilder().
 			SetQuery("apple").
 			SetDocsLimit(100).
 			SetWithHighlights(false).
 			AddField(NameTitle, 1.0).
-			AddField(NameBody, 10.0).
+			AddField(NameBody, 100.0).
 			Build()
 		result2, err := tc.Search(sCtx2)
 		require.NoError(t, err)
@@ -552,7 +801,7 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		jsonStr2, err := resDoc2.ToJson(schema, NameId)
 		require.NoError(t, err)
-		require.JSONEq(t, `{"highlights":[],"id":"id2","score":4.919108867645264}`, jsonStr2)
+		require.JSONEq(t, `{"highlights":[],"id":"id2","score":49.19108963012695}`, jsonStr2)
 	})
 }
 
@@ -581,6 +830,7 @@ func addDoc(
 	return doc, err
 }
 
+// Deprecated: Use fxWithConfig instead.
 func fx(
 	t *testing.T,
 	limit uintptr,
@@ -599,7 +849,7 @@ func fx(
 		true,
 		false,
 		tantivy_go.IndexRecordOptionWithFreqsAndPositions,
-		tantivy_go.TokenizerEdgeNgram,
+		tantivy_go.TokenizerNgram,
 	)
 	require.NoError(t, err)
 
@@ -659,7 +909,132 @@ func fx(
 	err = tc.RegisterTextAnalyzerEdgeNgram(tantivy_go.TokenizerEdgeNgram, minGram, 4, 100)
 	require.NoError(t, err)
 
+	err = tc.RegisterTextAnalyzerNgram(tantivy_go.TokenizerNgram, minGram, 4, false)
+	require.NoError(t, err)
+
 	err = tc.RegisterTextAnalyzerRaw(tantivy_go.TokenizerRaw)
 	require.NoError(t, err)
+	return schema, tc
+}
+
+type tantivyConfig struct {
+	utf8Lenient      bool
+	rustConfig       string
+	fields           []*fieldConfig
+	tokenizerConfigs []*tokenizerConfigItem
+}
+
+type fieldConfig struct {
+	name         string
+	stored       bool
+	indexed      bool
+	isFast       bool
+	recordOption int
+	tokenizer    string
+}
+
+type tokenizerConfigItem struct {
+	Type string
+	args []interface{}
+}
+
+func defaultTokenizerConfig() *tantivyConfig {
+	return &tantivyConfig{
+		utf8Lenient: false,
+		rustConfig:  "debug",
+		fields: []*fieldConfig{
+			{NameTitle, true, true, false, tantivy_go.IndexRecordOptionWithFreqsAndPositions, tantivy_go.TokenizerNgram},
+			{NameTitleZh, true, true, false, tantivy_go.IndexRecordOptionWithFreqsAndPositions, tantivy_go.TokenizerJieba},
+			{NameId, true, false, false, tantivy_go.IndexRecordOptionBasic, tantivy_go.TokenizerRaw},
+			{NameBody, true, true, false, tantivy_go.IndexRecordOptionWithFreqsAndPositions, tantivy_go.TokenizerSimple},
+			{NameBodyZh, true, true, false, tantivy_go.IndexRecordOptionWithFreqsAndPositions, tantivy_go.TokenizerJieba},
+		},
+		tokenizerConfigs: []*tokenizerConfigItem{
+			{tantivy_go.TokenizerSimple, []interface{}{uintptr(100), tantivy_go.English}},
+			{tantivy_go.TokenizerJieba, []interface{}{uintptr(100)}},
+			{tantivy_go.TokenizerEdgeNgram, []interface{}{uintptr(minGram), uintptr(maxGram), uintptr(limit)}},
+			{tantivy_go.TokenizerNgram, []interface{}{uintptr(minGram), uintptr(maxGram), false}},
+			{tantivy_go.TokenizerRaw, nil},
+		},
+	}
+}
+
+func (tc *tantivyConfig) apply(apply func(tc *tantivyConfig)) *tantivyConfig {
+	apply(tc)
+	return tc
+}
+
+func (tc *tantivyConfig) modifyField(name string, modifier func(field *fieldConfig)) *tantivyConfig {
+	for _, field := range tc.fields {
+		if field.name == name {
+			modifier(field)
+		}
+	}
+	return tc
+}
+
+func (tc *tantivyConfig) modifyTokenizer(name string, modifier func(config *tokenizerConfigItem)) *tantivyConfig {
+	for _, config := range tc.tokenizerConfigs {
+		if config.Type == name {
+			modifier(config)
+		}
+	}
+	return tc
+}
+
+func modifyTokenizer(tokenizers []tokenizerConfigItem) []tokenizerConfigItem {
+	for i, tokenizer := range tokenizers {
+		if tokenizer.Type == tantivy_go.TokenizerNgram {
+			tokenizers[i] = tokenizerConfigItem{
+				Type: tantivy_go.TokenizerNgram,
+				args: []interface{}{uintptr(3), uintptr(5), true}, // Измененные параметры
+			}
+		}
+	}
+	return tokenizers
+}
+
+func fxWithConfig(t *testing.T, config *tantivyConfig) (*tantivy_go.Schema, *tantivy_go.TantivyContext) {
+	err := internal.LibInit(true, config.utf8Lenient, config.rustConfig)
+	assert.NoError(t, err)
+
+	builder, err := tantivy_go.NewSchemaBuilder()
+	require.NoError(t, err)
+
+	for _, field := range config.fields {
+		err = builder.AddTextField(
+			field.name,
+			field.stored,
+			field.indexed,
+			field.isFast,
+			field.recordOption,
+			field.tokenizer,
+		)
+		require.NoError(t, err)
+	}
+
+	schema, err := builder.BuildSchema()
+	require.NoError(t, err)
+
+	_ = os.RemoveAll("index_dir")
+	tc, err := tantivy_go.NewTantivyContextWithSchema("index_dir", schema)
+	require.NoError(t, err)
+
+	for _, tokenizer := range config.tokenizerConfigs {
+		switch tokenizer.Type {
+		case tantivy_go.TokenizerSimple:
+			err = tc.RegisterTextAnalyzerSimple(tokenizer.Type, tokenizer.args[0].(uintptr), tokenizer.args[1].(string))
+		case tantivy_go.TokenizerJieba:
+			err = tc.RegisterTextAnalyzerJieba(tokenizer.Type, tokenizer.args[0].(uintptr))
+		case tantivy_go.TokenizerEdgeNgram:
+			err = tc.RegisterTextAnalyzerEdgeNgram(tokenizer.Type, tokenizer.args[0].(uintptr), tokenizer.args[1].(uintptr), tokenizer.args[2].(uintptr))
+		case tantivy_go.TokenizerNgram:
+			err = tc.RegisterTextAnalyzerNgram(tokenizer.Type, tokenizer.args[0].(uintptr), tokenizer.args[1].(uintptr), tokenizer.args[2].(bool))
+		case tantivy_go.TokenizerRaw:
+			err = tc.RegisterTextAnalyzerRaw(tokenizer.Type)
+		}
+		require.NoError(t, err)
+	}
+
 	return schema, tc
 }

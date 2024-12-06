@@ -1,0 +1,153 @@
+{
+  "texts": [
+    "some words",
+    "term",
+    "another term",
+    "term2",
+    "term3",
+    "not single term",
+    "sample three words",
+    "one"
+  ],
+  "fields": [
+    "body1",
+    "body2",
+    "body3",
+    "title1",
+    "title2",
+    "title3",
+    "summary",
+    "comments"
+  ],
+  "query": {
+    "subqueries": [
+      {
+        "query": {
+          "field_index": 0,
+          "text_index": 0,
+          "boost": 1
+        },
+        "query_modifier": 0,
+        "query_type": 1
+      },
+      {
+        "query": {
+          "field_index": 1,
+          "text_index": 1,
+          "boost": 1
+        },
+        "query_modifier": 1,
+        "query_type": 2
+      },
+      {
+        "query": {
+          "field_index": 2,
+          "text_index": 1,
+          "boost": 1
+        },
+        "query_modifier": 2,
+        "query_type": 3
+      },
+      {
+        "query": {
+          "field_index": 3,
+          "text_index": 2,
+          "boost": 0.1
+        },
+        "query_modifier": 0,
+        "query_type": 1
+      },
+      {
+        "query": {
+          "field_index": 4,
+          "text_index": 3,
+          "boost": 0.1
+        },
+        "query_modifier": 1,
+        "query_type": 2
+      },
+      {
+        "query": {
+          "field_index": 5,
+          "text_index": 3,
+          "boost": 0.1
+        },
+        "query_modifier": 2,
+        "query_type": 3
+      },
+      {
+        "query": {
+          "subqueries": [
+            {
+              "query": {
+                "field_index": 6,
+                "text_index": 4,
+                "boost": 1
+              },
+              "query_modifier": 1,
+              "query_type": 2
+            },
+            {
+              "query": {
+                "subqueries": [
+                  {
+                    "query": {
+                      "field_index": 7,
+                      "text_index": 5,
+                      "boost": 0.8
+                    },
+                    "query_modifier": 0,
+                    "query_type": 1
+                  },
+                  {
+                    "query": {
+                      "field_index": 0,
+                      "text_index": 6,
+                      "boost": 0.4
+                    },
+                    "query_modifier": 2,
+                    "query_type": 5
+                  }
+                ],
+                "boost": 0.3
+              },
+              "query_modifier": 1,
+              "query_type": 0
+            }
+          ],
+          "boost": 1
+        },
+        "query_modifier": 0,
+        "query_type": 0
+      },
+      {
+        "query": {
+          "field_index": 1,
+          "text_index": 6,
+          "boost": 1
+        },
+        "query_modifier": 0,
+        "query_type": 6
+      },
+      {
+        "query": {
+          "field_index": 1,
+          "text_index": 7,
+          "boost": 1
+        },
+        "query_modifier": 0,
+        "query_type": 1
+      },
+      {
+        "query": {
+          "field_index": 1,
+          "text_index": 7,
+          "boost": 1
+        },
+        "query_modifier": 0,
+        "query_type": 4
+      }
+    ],
+    "boost": 0
+  }
+}
