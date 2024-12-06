@@ -8,7 +8,6 @@ use log::debug;
 use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_float};
 use std::panic::PanicInfo;
@@ -626,7 +625,7 @@ fn perform_search<F>(
     with_highlights: bool,
 ) -> Result<*mut SearchResult, ()>
 where
-    F: FnOnce(&Index)-> Result<Box<dyn Query>, String>,
+    F: FnOnce(&Index) -> Result<Box<dyn Query>, String>,
 {
     let searcher = &context.reader().searcher();
     let schema = context.index.schema();
@@ -759,25 +758,24 @@ pub fn search_json(
     docs_limit: usize,
     context: &mut TantivyContext,
     with_highlights: bool,
-) -> Result<*mut SearchResult, Box<dyn Error>> {
+) -> Result<*mut SearchResult, TantivyGoError> {
     let schema = context.index.schema();
 
     let query_str = match assert_string(query_ptr, error_buffer) {
         Some(value) => value,
-        None => return Err(Box::new(TantivyGoError("assert_string error".to_string()))),
+        None => return Err(TantivyGoError("assert_string error".to_string())),
     };
 
-    Ok(perform_search(
+    perform_search(
         |index: &Index| {
-            parse_query_from_json(index, &schema, &query_str)
-                .map_err(|e| e.to_string())
+            parse_query_from_json(index, &schema, &query_str).map_err(|e| e.to_string())
         },
         error_buffer,
         docs_limit,
         context,
         with_highlights,
     )
-    .map_err(|_| Box::new(TantivyGoError("Search failed".to_string())))?)
+    .map_err(|_| TantivyGoError("Search failed".to_string()))
 }
 
 pub fn drop_any<T>(ptr: *mut T) {

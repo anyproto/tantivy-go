@@ -335,7 +335,10 @@ pub extern "C" fn context_search_json(
         with_highlights,
     ) {
         Ok(value) => value,
-        Err(_) => return ptr::null_mut()
+        Err(e) => {
+            set_error(&e.to_string(), error_buffer);
+            return ptr::null_mut();
+        }
     }
 }
 
