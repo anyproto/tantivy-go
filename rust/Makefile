@@ -3,6 +3,7 @@ all:
 
 setup:
 	@rustup target add x86_64-unknown-linux-musl
+	@rustup target add aarch64-unknown-linux-musl
 	@rustup target add armv7-linux-androideabi
 	@rustup target add i686-linux-android
 	@rustup target add aarch64-linux-android
@@ -27,6 +28,20 @@ build-debug-linux-amd64-musl:
 install-debug-linux-amd64-musl: build-debug-linux-amd64-musl
 	@mkdir -p ../libs/linux-amd64-musl
 	@cp target/x86_64-unknown-linux-musl/debug/libtantivy_go.a ../libs/linux-amd64-musl
+
+build-linux-arm64-musl:
+	env TARGET_CC=aarch64-linux-musl-gcc cargo build --release --target aarch64-unknown-linux-musl
+
+install-linux-arm64-musl: build-linux-arm64-musl
+	@mkdir -p ../libs/linux-arm64-musl
+	@cp target/aarch64-unknown-linux-musl/release/libtantivy_go.a ../libs/linux-arm64-musl
+
+build-debug-linux-arm64-musl:
+	env TARGET_CC=aarch64-linux-musl-gcc cargo build --target aarch64-unknown-linux-musl
+
+install-debug-linux-arm64-musl: build-debug-linux-arm64-musl
+	@mkdir -p ../libs/linux-arm64-musl
+	@cp target/aarch64-unknown-linux-musl/debug/libtantivy_go.a ../libs/linux-arm64-musl
 
 build-android-arm:
 	env TARGET_CC=armv7a-linux-androideabi26-clang cargo build --release --target armv7-linux-androideabi
@@ -170,6 +185,7 @@ install-debug-windows-amd64: build-debug-windows-amd64
 
 install-all: \
     install-linux-amd64-musl \
+    install-linux-arm64-musl \
     install-android-arm \
     install-android-386 \
     install-android-arm64 \
@@ -183,6 +199,7 @@ install-all: \
 
 install-debug-all: \
     install-debug-linux-amd64-musl \
+    install-debug-linux-arm64-musl \
     install-debug-android-arm \
     install-debug-android-386 \
     install-debug-android-arm64 \
@@ -209,6 +226,7 @@ TANTIVY_LIBS := android-386.tar.gz \
          ios-arm64.tar.gz \
          ios-arm64-sim.tar.gz \
          linux-amd64-musl.tar.gz \
+         linux-arm64-musl.tar.gz \
          windows-amd64.tar.gz
 
 define download_tantivy_lib
