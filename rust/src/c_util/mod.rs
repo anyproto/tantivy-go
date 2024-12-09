@@ -1,5 +1,4 @@
 mod util;
-mod string_processor;
 
 pub use self::util::set_error;
 pub use self::util::assert_string;

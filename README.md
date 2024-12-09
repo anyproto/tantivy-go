@@ -10,6 +10,8 @@ This project is still in development and might not be ready for production use. 
 ## Features
 ### Jieba Tokenizer
 This library includes the Jieba feature by default, which provides Chinese text segmentation. However, if you do not need this functionality, you can build the library without it to save approximately 5MB of the dictionary.
+### Golang API to Create Custom Queries for Tantivy
+See `searchquerybuilder.go`
 
 ## Installation
 
