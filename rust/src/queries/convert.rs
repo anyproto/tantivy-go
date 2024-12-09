@@ -1,6 +1,5 @@
 use crate::queries::{FinalQuery, GoQuery, QueryElement, QueryModifier};
-use crate::tantivy_util::extract_terms;
-use std::error::Error;
+use crate::tantivy_util::{extract_terms, TantivyGoError};
 use tantivy::query::Occur::{Must, Should};
 use tantivy::query::{
     BooleanQuery, BoostQuery, Occur, PhrasePrefixQuery, PhraseQuery, Query, TermQuery,
@@ -12,9 +11,11 @@ fn convert_to_tantivy(
     index: &Index,
     parsed: FinalQuery,
     schema: &Schema,
-) -> Result<Box<dyn Query>, Box<dyn Error>> {
+) -> Result<Box<dyn Query>, TantivyGoError> {
     if parsed.fields.is_empty() || parsed.texts.is_empty() {
-        return Err("Fields or texts cannot be empty".into());
+        return Err(TantivyGoError(
+            "Fields or texts cannot be empty".to_string(),
+        ));
     }
 
     // Recursive function to convert `QueryElement` to Tantivy's queries
@@ -24,14 +25,20 @@ fn convert_to_tantivy(
         schema: &Schema,
         texts: &[String],
         fields: &[String],
-    ) -> Result<(Occur, Box<dyn Query>), Box<dyn Error>> {
+    ) -> Result<(Occur, Box<dyn Query>), TantivyGoError> {
         let occur = modifier_to_occur(&element.modifier);
 
         let process_field_and_text =
-            |field_index: usize, text_index: usize| -> Result<(_, _), Box<dyn Error>> {
-                let field = fields.get(field_index).ok_or("Invalid field index")?;
-                let text = texts.get(text_index).ok_or("Invalid text index")?;
-                let field = schema.get_field(field).or(Err("Invalid field name"))?;
+            |field_index: usize, text_index: usize| -> Result<(_, _), TantivyGoError> {
+                let field = fields
+                    .get(field_index)
+                    .ok_or(TantivyGoError("Invalid field index".to_string()))?;
+                let text = texts
+                    .get(text_index)
+                    .ok_or(TantivyGoError("Invalid text index".to_string()))?;
+                let field = schema
+                    .get_field(field)
+                    .or(Err(TantivyGoError("Invalid field name".to_string())))?;
                 Ok((field, text))
             };
 
@@ -45,16 +52,20 @@ fn convert_to_tantivy(
                     let (field, text) = process_field_and_text(*field_index, *text_index)?;
                     let terms = extract_terms(&index, field, text)?;
                     if terms.len() == 1 {
-                        try_boost(
+                        Ok(try_boost(
                             occur,
                             *boost,
                             Box::new(TermQuery::new(
                                 terms[0].1.clone(),
                                 IndexRecordOption::WithFreqsAndPositions,
                             )),
-                        )
+                        ))
                     } else {
-                        try_boost(occur, *boost, Box::new(PhraseQuery::new_with_offset(terms)))
+                        Ok(try_boost(
+                            occur,
+                            *boost,
+                            Box::new(PhraseQuery::new_with_offset(terms)),
+                        ))
                     }
                 }
 
@@ -65,7 +76,11 @@ fn convert_to_tantivy(
                 } => {
                     let (field, text) = process_field_and_text(*field_index, *text_index)?;
                     let terms = extract_terms(&index, field, text)?;
-                    try_boost(occur, *boost, Box::new(PhrasePrefixQuery::new_with_offset(terms)))
+                    Ok(try_boost(
+                        occur,
+                        *boost,
+                        Box::new(PhrasePrefixQuery::new_with_offset(terms)),
+                    ))
                 }
 
                 GoQuery::TermPrefixQuery {
@@ -75,11 +90,11 @@ fn convert_to_tantivy(
                 } => {
                     let (field, text) = process_field_and_text(*field_index, *text_index)?;
                     let terms = extract_terms(&index, field, text)?;
-                    try_boost(
+                    Ok(try_boost(
                         occur,
                         *boost,
                         Box::new(PhrasePrefixQuery::new(vec![terms[0].1.clone()])),
-                    )
+                    ))
                 }
 
                 GoQuery::TermQuery {
@@ -89,14 +104,14 @@ fn convert_to_tantivy(
                 } => {
                     let (field, text) = process_field_and_text(*field_index, *text_index)?;
                     let terms = extract_terms(&index, field, text)?;
-                    try_boost(
+                    Ok(try_boost(
                         occur,
                         *boost,
                         Box::new(TermQuery::new(
                             terms[0].1.clone(),
                             IndexRecordOption::WithFreqs,
                         )),
-                    )
+                    ))
                 }
 
                 GoQuery::EveryTermQuery {
@@ -112,11 +127,15 @@ fn convert_to_tantivy(
                             Must,
                             1.0,
                             Box::new(TermQuery::new(term.1.clone(), IndexRecordOption::WithFreqs)),
-                        )?;
+                        );
                         post_terms.push(result);
                     }
 
-                    try_boost(occur, *boost, Box::new(BooleanQuery::new(post_terms)))
+                    Ok(try_boost(
+                        occur,
+                        *boost,
+                        Box::new(BooleanQuery::new(post_terms)),
+                    ))
                 }
 
                 GoQuery::OneOfTermQuery {
@@ -132,11 +151,15 @@ fn convert_to_tantivy(
                             Should,
                             1.0 - 0.5f32 * (i + 1) as f32 / terms.len() as f32,
                             Box::new(TermQuery::new(term.1.clone(), IndexRecordOption::WithFreqs)),
-                        )?;
+                        );
                         post_terms.push(result);
                     }
 
-                    try_boost(occur, *boost, Box::new(BooleanQuery::new(post_terms)))
+                    Ok(try_boost(
+                        occur,
+                        *boost,
+                        Box::new(BooleanQuery::new(post_terms)),
+                    ))
                 }
 
                 GoQuery::BoolQuery { subqueries, boost } => {
@@ -144,23 +167,23 @@ fn convert_to_tantivy(
                     for subquery in subqueries {
                         sub_queries.push(element_to_query(index, subquery, schema, texts, fields)?);
                     }
-                    try_boost(occur, *boost, Box::new(BooleanQuery::new(sub_queries)))
+                    Ok(try_boost(
+                        occur,
+                        *boost,
+                        Box::new(BooleanQuery::new(sub_queries)),
+                    ))
                 }
             }
         } else {
-            Err("Query is None in QueryElement".into())
+            Err(TantivyGoError("Query is None in QueryElement".to_string()))
         }
     }
 
-    fn try_boost(
-        occur: Occur,
-        boost: f32,
-        query: Box<dyn Query>,
-    ) -> Result<(Occur, Box<dyn Query>), Box<dyn Error>> {
+    fn try_boost(occur: Occur, boost: f32, query: Box<dyn Query>) -> (Occur, Box<dyn Query>) {
         if boost == 1.0 {
-            Ok((occur, query))
+            (occur, query)
         } else {
-            Ok((occur, Box::new(BoostQuery::new(query, boost as Score))))
+            (occur, Box::new(BoostQuery::new(query, boost as Score)))
         }
     }
 
@@ -191,10 +214,11 @@ pub fn parse_query_from_json(
     index: &Index,
     schema: &Schema,
     json: &str,
-) -> Result<Box<dyn Query>, Box<dyn Error>> {
-    let parsed = serde_json::from_str(json)?;
-    let result = convert_to_tantivy(index, parsed, schema);
-    result
+) -> Result<Box<dyn Query>, TantivyGoError> {
+    match serde_json::from_str(json) {
+        Ok(parsed) => convert_to_tantivy(index, parsed, schema),
+        Err(e) => Err(TantivyGoError(e.to_string())),
+    }
 }
 
 #[cfg(test)]
@@ -203,16 +227,13 @@ mod tests {
     use crate::queries::models::BoolQuery;
     use crate::queries::{FinalQuery, GoQuery, QueryElement, QueryModifier};
     use std::fs;
+    use tantivy::query::BooleanQuery;
     use tantivy::query::PhraseQuery as TPhraseQuery;
     use tantivy::query::TermQuery as TTermQuery;
-    use tantivy::query::BooleanQuery;
     use tantivy::query::{BoostQuery, Occur as TO};
     use tantivy::query::{PhrasePrefixQuery as TPhrasePrefixQuery, Query};
     use tantivy::schema::{Field, IndexRecordOption, Schema, TextFieldIndexing, STORED, TEXT};
-    use tantivy::tokenizer::{
-        SimpleTokenizer,
-        TextAnalyzer,
-    };
+    use tantivy::tokenizer::{SimpleTokenizer, TextAnalyzer};
     use tantivy::{Index, Term};
 
     fn expected_query() -> FinalQuery {
@@ -225,7 +246,7 @@ mod tests {
                 "term3",
                 "not single term",
                 "sample three words",
-                "one"
+                "one",
             ]
             .into_iter()
             .map(|t| t.to_string())

@@ -1,27 +1,28 @@
 use tantivy::tokenizer::{Language, Stemmer};
+use crate::tantivy_util::TantivyGoError;
 
-pub fn create_stemmer(lang: &str) -> Stemmer {
+pub fn create_stemmer(lang: &str) -> Result<Stemmer, TantivyGoError> {
     let stemmer_language = match lang {
-        "ar" => Language::Arabic,
-        "da" => Language::Danish,
-        "nl" => Language::Dutch,
-        "en" => Language::English,
-        "fi" => Language::Finnish,
-        "fr" => Language::French,
-        "de" => Language::German,
-        "el" => Language::Greek,
-        "hu" => Language::Hungarian,
-        "it" => Language::Italian,
-        "no" => Language::Norwegian,
-        "pt" => Language::Portuguese,
-        "ro" => Language::Romanian,
-        "ru" => Language::Russian,
-        "es" => Language::Spanish,
-        "sv" => Language::Swedish,
-        "ta" => Language::Tamil,
-        "tr" => Language::Turkish,
-        _ => panic!("Unsupported language"),
-    };
+        "ar" => Ok(Language::Arabic),
+        "da" => Ok(Language::Danish),
+        "nl" => Ok(Language::Dutch),
+        "en" => Ok(Language::English),
+        "fi" => Ok(Language::Finnish),
+        "fr" => Ok(Language::French),
+        "de" => Ok(Language::German),
+        "el" => Ok(Language::Greek),
+        "hu" => Ok(Language::Hungarian),
+        "it" => Ok(Language::Italian),
+        "no" => Ok(Language::Norwegian),
+        "pt" => Ok(Language::Portuguese),
+        "ro" => Ok(Language::Romanian),
+        "ru" => Ok(Language::Russian),
+        "es" => Ok(Language::Spanish),
+        "sv" => Ok(Language::Swedish),
+        "ta" => Ok(Language::Tamil),
+        "tr" => Ok(Language::Turkish),
+        _ => Err(TantivyGoError(format!("{} is an unsupported language", lang))),
+    }?;
 
-    Stemmer::new(stemmer_language)
+    Ok(Stemmer::new(stemmer_language))
 }
