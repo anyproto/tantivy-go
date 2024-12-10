@@ -16,7 +16,7 @@ use std::{fs, panic, slice};
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{Query, QueryParser};
 use tantivy::schema::{Field, Schema};
-use tantivy::{Index, IndexWriter, Score, TantivyDocument, TantivyError, Term};
+use tantivy::{Index, IndexWriter, Opstamp, Score, TantivyDocument, TantivyError, Term};
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {
@@ -35,21 +35,16 @@ fn write_buffer(error_buffer: *mut *mut c_char, err_str: CString) {
     }
 }
 
-fn process_c_str<'a>(
-    str_ptr: *const c_char,
-    error_buffer: *mut *mut c_char,
-) -> Result<Cow<'a, str>, String> {
+// Try not to copy one-time-living strings if possible
+pub fn assert_str<'a>(str_ptr: *const c_char) -> Result<Cow<'a, str>, TantivyGoError> {
     unsafe {
         if str_ptr.is_null() {
-            set_error(POINTER_IS_NULL, error_buffer);
-            return Err(POINTER_IS_NULL.to_owned());
+            return Err(TantivyGoError(POINTER_IS_NULL.to_owned()));
         }
         let is_lenient = match config::CONFIG.read() {
             Ok(config) => config.utf8_lenient,
             Err(err) => {
-                let error_message = err.to_string();
-                set_error(&error_message, error_buffer);
-                return Err(error_message);
+                return Err(TantivyGoError(err.to_string()));
             }
         };
         let cstr = CStr::from_ptr(str_ptr);
@@ -58,172 +53,91 @@ fn process_c_str<'a>(
         } else {
             match cstr.to_str() {
                 Ok(valid_str) => Ok(Cow::Borrowed(valid_str)),
-                Err(err) => {
-                    let error_message = err.to_string();
-                    set_error(&error_message, error_buffer);
-                    Err(error_message)
-                }
+                Err(err) => Err(TantivyGoError(err.to_string())),
             }
         }
     }
 }
 
 // Always copy long-living strings for safety reasons
-pub fn assert_string(str_ptr: *const c_char, error_buffer: *mut *mut c_char) -> Option<String> {
-    match process_c_str(str_ptr, error_buffer) {
-        Ok(Cow::Borrowed(original_str)) => Some(original_str.to_owned()),
-        Ok(Cow::Owned(fixed_str)) => Some(fixed_str),
-        Err(_) => None,
-    }
+pub fn assert_string(str_ptr: *const c_char) -> Result<String, TantivyGoError> {
+    assert_str(str_ptr).map(|cow| cow.into_owned())
 }
 
-// Try not to copy one-time-living strings if possible
-pub fn assert_str<'a>(
-    str_ptr: *const c_char,
-    error_buffer: *mut *mut c_char,
-) -> Option<Cow<'a, str>> {
-    match process_c_str(str_ptr, error_buffer) {
-        Err(_) => None,
-        Ok(res) => Some(res),
+pub fn assert_pointer<'a, T>(ptr: *mut T) -> Result<&'a mut T, TantivyGoError> {
+    if ptr.is_null() {
+        return Err(TantivyGoError(POINTER_IS_NULL.to_owned()));
     }
-}
-
-pub fn assert_pointer<'a, T>(ptr: *mut T, error_buffer: *mut *mut c_char) -> Option<&'a mut T> {
-    let result = unsafe {
-        if ptr.is_null() {
-            set_error(POINTER_IS_NULL, error_buffer);
-            return None;
-        }
-        &mut *ptr
-    };
-    Some(result)
+    unsafe { Ok(&mut *ptr) }
 }
 
 pub fn process_type_slice<'a, T, F>(
     ptr: *mut *mut T,
-    error_buffer: *mut *mut c_char,
     len: usize,
     mut func: F,
-) -> Result<(), ()>
+) -> Result<(), TantivyGoError>
 where
-    F: FnMut(*mut T) -> Result<(), ()>,
+    F: FnMut(*mut T) -> Result<(), TantivyGoError>,
 {
-    let slice = match assert_pointer(ptr, error_buffer) {
-        Some(ptr) => unsafe { slice::from_raw_parts(ptr, len) },
-        None => return Err(()),
-    };
-
-    for item in slice {
-        let value = match assert_pointer(*item, error_buffer) {
-            Some(value) => value,
-            None => return Err(()),
-        };
-        if func(value).is_err() {
-            return Err(());
-        }
-    }
-
+    let slice = unsafe { slice::from_raw_parts(assert_pointer(ptr)?, len) };
+    slice.iter().try_for_each(|&item| func(assert_pointer(item)?) )?;
     Ok(())
 }
 
 pub fn process_string_slice<'a, F>(
     ptr: *mut *const c_char,
-    error_buffer: *mut *mut c_char,
     len: usize,
     mut func: F,
-) -> Result<(), ()>
+) -> Result<(), TantivyGoError>
 where
-    F: FnMut(Cow<'a, str>) -> Result<(), ()>,
+    F: FnMut(Cow<'a, str>) -> Result<(), TantivyGoError>,
 {
-    let slice = match assert_pointer(ptr, error_buffer) {
-        Some(ptr) => unsafe { slice::from_raw_parts(ptr, len) },
-        None => return Err(()),
-    };
-
-    for &item in slice {
-        let value = match assert_str(item, error_buffer) {
-            Some(value) => value,
-            None => return Err(()),
-        };
-
-        if func(value).is_err() {
-            return Err(());
-        }
-    }
-
+    let slice = unsafe { slice::from_raw_parts(assert_pointer(ptr)?, len) };
+    slice.iter().try_for_each(|&item| func(assert_str(item)?))?;
     Ok(())
 }
 
-pub fn process_slice<'a, F, T>(
-    ptr: *mut T,
-    error_buffer: *mut *mut c_char,
-    len: usize,
-    mut func: F,
-) -> Result<(), ()>
+
+pub fn process_slice<'a, F, T>(ptr: *mut T, len: usize, mut func: F) -> Result<(), TantivyGoError>
 where
-    F: FnMut(usize, T) -> Result<(), ()>,
+    F: FnMut(usize, T) -> Result<(), TantivyGoError>,
     T: Copy,
 {
-    let slice = match assert_pointer(ptr, error_buffer) {
-        Some(ptr) => unsafe { slice::from_raw_parts(ptr, len) },
-        None => return Err(()),
-    };
-
-    for (i, item) in slice.iter().enumerate() {
-        if func(i, *item).is_err() {
-            return Err(());
-        }
-    }
-
+    let slice = unsafe { slice::from_raw_parts(assert_pointer(ptr)?, len) };
+    slice.iter().enumerate().try_for_each(|(i, &item)| func(i, item))?;
     Ok(())
 }
 
-pub fn schema_apply_for_field<'a, T, K, F: FnMut(Field, Cow<'a, str>) -> Result<T, ()>>(
-    error_buffer: *mut *mut c_char,
+
+pub fn schema_apply_for_field<
+    'a, T, K,
+    F: FnMut(Field, Cow<'a, str>) -> Result<T, TantivyGoError>,
+>(
     schema: Schema,
     field_name: Cow<'a, str>,
     mut func: F,
-) -> Result<T, ()> {
-    match schema.get_field(&field_name) {
-        Ok(field) => func(field, field_name),
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            Err(())
-        }
-    }
+) -> Result<T, TantivyGoError> {
+    schema.get_field(&field_name)
+        .map(|field| func(field, field_name))
+        .unwrap_or_else(|err| Err(TantivyGoError::from_err("Get field error", &err.to_string())))
 }
 
 pub fn convert_document_as_json(
     include_fields_ptr: *mut *const c_char,
     include_fields_len: usize,
-    error_buffer: *mut *mut c_char,
     doc: &mut Document,
     schema: Schema,
-) -> Result<String, ()> {
+) -> Result<String, TantivyGoError> {
     let mut field_to_name = HashMap::new();
 
-    if process_string_slice(
-        include_fields_ptr,
-        error_buffer,
-        include_fields_len,
-        |field_name| {
-            schema_apply_for_field::<(), (), _>(
-                error_buffer,
-                schema.clone(),
-                field_name,
-                |field, field_name| {
-                    field_to_name.insert(field, field_name);
-                    Ok(())
-                },
-            )
-        },
-    )
-    .is_err()
-    {
-        return Err(());
-    }
+    process_string_slice(include_fields_ptr, include_fields_len, |field_name| {
+        schema_apply_for_field::<(), (), _>(schema.clone(), field_name, |field, field_name| {
+            field_to_name.insert(field, field_name);
+            Ok(())
+        })
+    })?;
 
-    let doc_json = convert_document_to_json(doc, &field_to_name);
+    let doc_json = convert_document_to_json(doc, &field_to_name)?;
 
     Ok(json!(doc_json).to_string())
 }
@@ -241,72 +155,49 @@ pub fn start_lib_init(log_level: &str, clear_on_panic: bool, utf8_lenient: bool)
 }
 
 fn set_utf8_lenient(utf8_lenient: bool) {
-    match config::CONFIG.write() {
-        Ok(mut config) => {
-            config.update_utf8_lenient(utf8_lenient);
-        }
-        Err(e) => {
-            debug!("Set utf8_lenient err: {}", e);
-        }
+    if let Err(e) = config::CONFIG.write().map(|mut config| {
+        config.update_utf8_lenient(utf8_lenient);
+    }) {
+        debug!("Failed to set utf8_lenient: {}", e);
     }
 }
 
+
 fn handle_panic(old_hook: Box<dyn Fn(&PanicInfo) + Sync + Send>) {
     panic::set_hook(Box::new(move |panic_info| {
-        match config::CONFIG.read() {
-            Ok(config) => {
-                let fts_path = config.fts_path.as_str();
-                if fts_path.is_empty() {
-                    debug!("fts path is empty");
-                } else {
-                    let _ = fs::remove_dir_all(Path::new(fts_path));
-                }
+        if let Ok(config) = config::CONFIG.read() {
+            let fts_path = config.fts_path.as_str();
+            if fts_path.is_empty() {
+                debug!("fts path is empty");
+            } else if let Err(e) = fs::remove_dir_all(Path::new(fts_path)) {
+                debug!("Failed to remove directory: {}", e);
             }
-            Err(e) => {
-                debug!("Set hook err: {}", e);
-            }
+        } else {
+            debug!("Failed to read config.");
         }
         old_hook(panic_info)
     }));
 }
 
 pub fn create_context_with_schema(
-    error_buffer: *mut *mut c_char,
     schema: Schema,
     path: String,
-) -> Result<*mut TantivyContext, ()> {
-    match config::CONFIG.write() {
-        Ok(mut config) => {
-            config.update_fts_path(path.clone());
-        }
-        Err(e) => {
-            debug!("Failed to set path: {}", e)
-        }
-    }
-    match fs::create_dir_all(Path::new(path.as_str())) {
-        Err(e) => {
-            debug!("Failed to create directories: {}", e);
-            set_error(&e.to_string(), error_buffer);
-            return Err(());
-        }
-        _ => {}
-    }
+) -> Result<*mut TantivyContext, TantivyGoError> {
+    config::CONFIG
+        .write()
+        .map_err(|e| TantivyGoError::from_err("Failed to set path", &e.to_string()))?
+        .update_fts_path(path.clone());
 
-    let dir = match MmapDirectory::open(path) {
-        Ok(dir) => dir,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return Err(());
-        }
-    };
+    fs::create_dir_all(Path::new(&path))
+        .map_err(|e| TantivyGoError::from_err("Failed to create directories", &e.to_string()))?;
 
-    Ok(match create_tantivy_context(dir, schema) {
-        Ok(ctx) => Box::into_raw(Box::new(ctx)),
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return Err(());
-        }
-    })
+    let dir =
+        MmapDirectory::open(&path).map_err(|err| TantivyGoError::from_str(&err.to_string()))?;
+
+    let ctx = create_tantivy_context(dir, schema)
+        .map_err(|err| TantivyGoError::from_str(&err.to_string()))?;
+
+    Ok(Box::into_raw(Box::new(ctx)))
 }
 
 fn create_tantivy_context(
@@ -316,106 +207,78 @@ fn create_tantivy_context(
     let index = Index::open_or_create(dir, schema)?;
     let writer = index.writer(DOCUMENT_BUDGET_BYTES)?;
     let reader = index.reader()?;
-    return Ok(TantivyContext::new(index, writer, reader));
+    Ok(TantivyContext::new(index, writer, reader))
 }
 
 pub fn add_and_consume_documents(
     docs_ptr: *mut *mut Document,
     docs_len: usize,
-    error_buffer: *mut *mut c_char,
     writer: &mut IndexWriter,
-) {
-    if process_type_slice(docs_ptr, error_buffer, docs_len, |doc| {
+) -> Result<(), TantivyGoError> {
+    process_type_slice(docs_ptr, docs_len, |doc| {
         let doc = *box_from(doc);
         let _ = writer.add_document(doc.tantivy_doc);
         Ok(())
     })
-    .is_err()
-    {
-        rollback(error_buffer, writer, "Failed to add the document");
-        return;
-    }
+    .map_err(|err| {
+        rollback(writer);
+        TantivyGoError(format!("Failed to add the document: {}", err))
+    })?;
 
-    commit(writer, "Failed to commit the document", error_buffer)
+    commit(writer, "Failed to commit the document")?;
+    Ok(())
 }
 
-fn commit(writer: &mut IndexWriter, message: &str, error_buffer: *mut *mut c_char) {
-    let result = writer.commit();
-
-    if result.is_err() {
-        rollback(
-            error_buffer,
-            writer,
-            format!("{}: {}", message, result.unwrap_err()).as_str(),
-        );
-    }
+fn commit(writer: &mut IndexWriter, message: &str) -> Result<Opstamp, TantivyGoError> {
+    writer.commit().map_err(|err| {
+        rollback(writer);
+        TantivyGoError::from_err(message, &err.to_string())
+    })
 }
 
 pub fn delete_docs<'a>(
     delete_ids_ptr: *mut *const c_char,
     delete_ids_len: usize,
-    error_buffer: *mut *mut c_char,
     context: &mut TantivyContext,
     field_name: Cow<'a, str>,
-) {
+) -> Result<(), TantivyGoError> {
     let schema = context.index.schema();
 
-    let field = match schema_apply_for_field::<Field, (), _>(
-        error_buffer,
-        schema.clone(),
-        field_name,
-        |field, _| match get_string_field_entry(schema.clone(), field) {
-            Ok(value) => Ok(value),
-            Err(_) => Err(()),
-        },
-    ) {
-        Ok(value) => value,
-        Err(_) => {
-            rollback(
-                error_buffer,
-                &mut context.writer,
-                "Failed to apply schema for field",
-            );
-            return;
-        }
-    };
+    let field = schema_apply_for_field::<Field, (), _>(schema.clone(), field_name, |field, _| {
+        get_string_field_entry(schema.clone(), field)
+    })
+    .map_err(|err| {
+        rollback(&mut context.writer);
+        err
+    })?;
 
-    if process_string_slice(delete_ids_ptr, error_buffer, delete_ids_len, |id_value| {
-        let _ = context
+    process_string_slice(delete_ids_ptr, delete_ids_len, |id_value| {
+        context
             .writer
             .delete_term(Term::from_field_text(field, &id_value));
         Ok(())
     })
-    .is_err()
-    {
-        rollback(
-            error_buffer,
-            &mut context.writer,
-            "Failed to process string slice",
-        );
-        return;
-    }
+    .map_err(|err| {
+        rollback(&mut context.writer);
+        err
+    })?;
 
-    commit(
-        &mut context.writer,
-        "Failed to commit removing",
-        error_buffer,
-    );
+    commit(&mut context.writer, "Failed to commit removing")?;
+    Ok(())
 }
 
-fn rollback(error_buffer: *mut *mut c_char, writer: &mut IndexWriter, message: &str) {
+fn rollback(writer: &mut IndexWriter) {
     let _ = writer.rollback();
-    set_error(message, error_buffer);
 }
 
 pub fn get_doc<'a>(
     index: usize,
-    error_buffer: *mut *mut c_char,
     result: &mut SearchResult,
-) -> Result<*mut Document, ()> {
-    if index > result.documents.len() - 1 {
-        set_error("wrong index", error_buffer);
-        return Err(());
+) -> Result<*mut Document, TantivyGoError> {
+    if index >= result.documents.len() {
+        return Err(TantivyGoError(
+            format!("{} is more than {}", index, result.documents.len() - 1).to_string(),
+        ));
     }
 
     let doc = result.documents[index].clone();
@@ -423,262 +286,56 @@ pub fn get_doc<'a>(
 }
 
 pub fn add_field<'a>(
-    error_buffer: *mut *mut c_char,
     doc: &mut Document,
     index: &Index,
     field_name: Cow<'a, str>,
     field_value: &str,
-) {
-    let schema = index.schema();
-    let field = match schema_apply_for_field::<Field, (), _>(
-        error_buffer,
-        schema,
-        field_name,
-        |field, _| Ok(field),
-    ) {
-        Ok(field) => field,
-        Err(_) => return,
-    };
+) -> Result<(), TantivyGoError> {
+    let field =
+        schema_apply_for_field::<Field, (), _>(index.schema(), field_name, |field, _| Ok(field))
+            .map_err(|err| err)?;
 
     doc.tantivy_doc.add_text(field, field_value);
+    Ok(())
 }
-
-/*pub fn search(
-    field_names_ptr: *mut *const c_char,
-    field_weights_ptr: *mut c_float,
-    field_names_len: usize,
-    query_ptr: *const c_char,
-    error_buffer: *mut *mut c_char,
-    docs_limit: usize,
-    context: &mut TantivyContext,
-    with_highlights: bool,
-) -> Result<*mut SearchResult, ()> {
-    let searcher = &context.reader().searcher();
-    let schema = context.index.schema();
-
-    let mut fields = Vec::with_capacity(field_names_len);
-
-    if process_string_slice(
-        field_names_ptr,
-        error_buffer,
-        field_names_len,
-        |field_name| {
-            schema_apply_for_field::<(), (), _>(
-                error_buffer,
-                schema.clone(),
-                field_name,
-                |field, _| {
-                    fields.push(field);
-                    Ok(())
-                },
-            )
-        },
-    )
-    .is_err()
-    {
-        return Err(());
-    }
-
-    let mut weights = HashMap::with_capacity(field_names_len);
-
-    if process_slice(
-        field_weights_ptr,
-        error_buffer,
-        field_names_len,
-        |i, field_weight| {
-            weights.insert(fields[i], field_weight);
-            Ok(())
-        },
-    )
-    .is_err()
-    {
-        return Err(());
-    }
-
-    let query = match assert_string(query_ptr, error_buffer) {
-        Some(value) => value,
-        None => return Err(()),
-    };
-
-    let mut query_parser = QueryParser::for_index(&context.index, fields);
-    for (field, weight) in weights {
-        query_parser.set_field_boost(field, weight as Score);
-    }
-
-    let query = match query_parser.parse_query(query.as_str()) {
-        Ok(query) => query,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return Err(());
-        }
-    };
-
-    let top_docs =
-        match searcher.search(&query, &tantivy::collector::TopDocs::with_limit(docs_limit)) {
-            Ok(top_docs) => top_docs,
-            Err(err) => {
-                set_error(&err.to_string(), error_buffer);
-                return Err(());
-            }
-        };
-
-    let mut documents = Vec::new();
-    for (score, doc_address) in top_docs {
-        match searcher.doc::<TantivyDocument>(doc_address) {
-            Ok(doc) => {
-                let highlights =
-                    match find_highlights(with_highlights, &searcher, &query, &doc, schema.clone())
-                    {
-                        Ok(highlights) => highlights,
-                        Err(err) => {
-                            set_error(&err.to_string(), error_buffer);
-                            return Err(());
-                        }
-                    };
-
-                documents.push(Document {
-                    tantivy_doc: doc,
-                    highlights,
-                    score: score,
-                });
-            }
-
-            Err(err) => {
-                set_error(&err.to_string(), error_buffer);
-                return Err(());
-            }
-        };
-    }
-
-    let size = documents.len();
-    Ok(Box::into_raw(Box::new(SearchResult { documents, size })))
-}
-
-pub fn search_json(
-    query_ptr: *const c_char,
-    error_buffer: *mut *mut c_char,
-    docs_limit: usize,
-    context: &mut TantivyContext,
-    with_highlights: bool,
-) -> Result<*mut SearchResult, Box<dyn Error>> {
-    let searcher = &context.reader().searcher();
-    let schema = context.index.schema();
-
-    let query = match assert_string(query_ptr, error_buffer) {
-        Some(value) => value,
-        None => return Err(Box::new(TantivyGoError("assert_string error".to_string()))),
-    };
-
-    let query = match parse_query_from_json(&context.index, &schema, &query) {
-        Ok(query) => query,
-        Err(err) => {
-            set_error(&err.to_string(), error_buffer);
-            return Err(err.into());
-        }
-    };
-
-    let top_docs =
-        match searcher.search(&query, &tantivy::collector::TopDocs::with_limit(docs_limit)) {
-            Ok(top_docs) => top_docs,
-            Err(err) => {
-                set_error(&err.to_string(), error_buffer);
-                return Err(err.into());
-            }
-        };
-
-    let mut documents = Vec::new();
-    for (score, doc_address) in top_docs {
-        match searcher.doc::<TantivyDocument>(doc_address) {
-            Ok(doc) => {
-                let highlights =
-                    match find_highlights(with_highlights, &searcher, &query, &doc, schema.clone())
-                    {
-                        Ok(highlights) => highlights,
-                        Err(err) => {
-                            set_error(&err.to_string(), error_buffer);
-                            return Err(Box::new(err));
-                        }
-                    };
-                documents.push(Document {
-                    tantivy_doc: doc,
-                    highlights,
-                    score: score,
-                });
-            }
-
-            Err(err) => {
-                set_error(&err.to_string(), error_buffer);
-                return Err(Box::new(err));
-            }
-        };
-    }
-
-    let size = documents.len();
-    Ok(Box::into_raw(Box::new(SearchResult { documents, size })))
-}*/
 
 fn perform_search<F>(
     query_parser_fn: F,
-    error_buffer: *mut *mut c_char,
     docs_limit: usize,
     context: &mut TantivyContext,
     with_highlights: bool,
-) -> Result<*mut SearchResult, ()>
+) -> Result<*mut SearchResult, TantivyGoError>
 where
     F: FnOnce(&Index) -> Result<Box<dyn Query>, String>,
 {
     let searcher = &context.reader().searcher();
     let schema = context.index.schema();
 
-    // Парсинг запроса
-    let query = match query_parser_fn(&context.index) {
-        Ok(query) => query,
-        Err(err) => {
-            set_error(&err, error_buffer);
-            return Err(());
-        }
-    };
+    let query = query_parser_fn(&context.index).map_err(|err| TantivyGoError(err))?;
 
-    // Выполнение поиска
-    let top_docs =
-        match searcher.search(&query, &tantivy::collector::TopDocs::with_limit(docs_limit)) {
-            Ok(top_docs) => top_docs,
-            Err(err) => {
-                set_error(&err.to_string(), error_buffer);
-                return Err(());
-            }
-        };
+    let top_docs = searcher
+        .search(&query, &tantivy::collector::TopDocs::with_limit(docs_limit))
+        .map_err(|err| TantivyGoError::from_err("Search err", &err.to_string()))?;
 
-    // Обработка документов
     let mut documents = Vec::new();
     for (score, doc_address) in top_docs {
-        match searcher.doc::<TantivyDocument>(doc_address) {
-            Ok(doc) => {
-                let highlights =
-                    match find_highlights(with_highlights, &searcher, &query, &doc, schema.clone())
-                    {
-                        Ok(highlights) => highlights,
-                        Err(err) => {
-                            set_error(&err.to_string(), error_buffer);
-                            return Err(());
-                        }
-                    };
-                documents.push(Document {
-                    tantivy_doc: doc,
-                    highlights,
-                    score,
-                });
-            }
-
-            Err(err) => {
-                set_error(&err.to_string(), error_buffer);
-                return Err(());
-            }
-        };
+        let doc = searcher
+            .doc::<TantivyDocument>(doc_address)
+            .map_err(|err| TantivyGoError(err.to_string()))?;
+        let highlights = find_highlights(with_highlights, &searcher, &query, &doc, schema.clone())
+            .map_err(|err| TantivyGoError(err.to_string()))?;
+        documents.push(Document {
+            tantivy_doc: doc,
+            highlights,
+            score,
+        });
     }
 
     let size = documents.len();
-    Ok(Box::into_raw(Box::new(SearchResult { documents, size })))
+    Ok(Box::into_raw(Box::new(SearchResult {
+        documents,
+        size,
+    })))
 }
 
 pub fn search(
@@ -686,54 +343,27 @@ pub fn search(
     field_weights_ptr: *mut c_float,
     field_names_len: usize,
     query_ptr: *const c_char,
-    error_buffer: *mut *mut c_char,
     docs_limit: usize,
     context: &mut TantivyContext,
     with_highlights: bool,
-) -> Result<*mut SearchResult, ()> {
+) -> Result<*mut SearchResult, TantivyGoError> {
     let schema = context.index.schema();
 
     let mut fields = Vec::with_capacity(field_names_len);
-    if process_string_slice(
-        field_names_ptr,
-        error_buffer,
-        field_names_len,
-        |field_name| {
-            schema_apply_for_field::<(), (), _>(
-                error_buffer,
-                schema.clone(),
-                field_name,
-                |field, _| {
-                    fields.push(field);
-                    Ok(())
-                },
-            )
-        },
-    )
-    .is_err()
-    {
-        return Err(());
-    }
+    process_string_slice(field_names_ptr, field_names_len, |field_name| {
+        schema_apply_for_field::<(), (), _>(schema.clone(), field_name, |field, _| {
+            fields.push(field);
+            Ok(())
+        })
+    })?;
 
     let mut weights = HashMap::with_capacity(field_names_len);
-    if process_slice(
-        field_weights_ptr,
-        error_buffer,
-        field_names_len,
-        |i, field_weight| {
-            weights.insert(fields[i], field_weight);
-            Ok(())
-        },
-    )
-    .is_err()
-    {
-        return Err(());
-    }
+    process_slice(field_weights_ptr, field_names_len, |i, field_weight| {
+        weights.insert(fields[i], field_weight);
+        Ok(())
+    })?;
 
-    let query_str = match assert_string(query_ptr, error_buffer) {
-        Some(value) => value,
-        None => return Err(()),
-    };
+    let query_str = assert_string(query_ptr)?;
 
     perform_search(
         |index: &Index| {
@@ -745,7 +375,6 @@ pub fn search(
                 .parse_query(query_str.as_str())
                 .map_err(|e| e.to_string())
         },
-        error_buffer,
         docs_limit,
         context,
         with_highlights,
@@ -754,28 +383,22 @@ pub fn search(
 
 pub fn search_json(
     query_ptr: *const c_char,
-    error_buffer: *mut *mut c_char,
     docs_limit: usize,
     context: &mut TantivyContext,
     with_highlights: bool,
 ) -> Result<*mut SearchResult, TantivyGoError> {
     let schema = context.index.schema();
 
-    let query_str = match assert_string(query_ptr, error_buffer) {
-        Some(value) => value,
-        None => return Err(TantivyGoError("assert_string error".to_string())),
-    };
+    let query_str = assert_string(query_ptr)?;
 
     perform_search(
         |index: &Index| {
             parse_query_from_json(index, &schema, &query_str).map_err(|e| e.to_string())
         },
-        error_buffer,
         docs_limit,
         context,
         with_highlights,
     )
-    .map_err(|_| TantivyGoError("Search failed".to_string()))
 }
 
 pub fn drop_any<T>(ptr: *mut T) {
