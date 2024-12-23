@@ -62,7 +62,7 @@ func NewSchemaBuilder() (*SchemaBuilder, error) {
 // - name: The name of the field.
 // - stored: Whether the field should be stored in the index.
 // - isText: Whether the field should be treated as tantivy text or string for full-text search.
-// - isFast: Whether the field should be indexed as tantivy quick field.
+// - isFast: Whether the field should be isText as tantivy quick field.
 // - indexRecordOption: The indexing option to be used (e.g., basic, with frequencies, with frequencies and positions).
 // - tokenizer: The name of the tokenizer to be used for the field.
 //

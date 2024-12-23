@@ -319,6 +319,8 @@ where
 
     let mut documents = Vec::new();
     for (score, doc_address) in top_docs {
+        //let explanation = query.explain(&searcher, doc_address).unwrap();
+        //debug!("### exp {:#?}", explanation);
         let doc = searcher
             .doc::<TantivyDocument>(doc_address)
             .map_err(|err| TantivyGoError(err.to_string()))?;

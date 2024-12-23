@@ -575,6 +575,79 @@ func Test(t *testing.T) {
 		require.Equal(t, uint64(0), docs)
 	})
 
+	t.Run("docs search and remove - when title and edge2", func(t *testing.T) {
+		_, tc := fxWithConfig(t, defaultTokenizerConfig().apply(func(tc *tantivyConfig) {
+			tc.modifyField(NameTitle, func(field *fieldConfig) {
+				field.tokenizer = tantivy_go.TokenizerSimple
+			})
+		}))
+
+		defer tc.Free()
+
+		doc1, err := addDoc(t, "Ort", "", "1", tc)
+		doc12, err := addDoc(t, "Assignee", "", "1", tc)
+		doc2, err := addDoc(t, "Album", "", "2", tc)
+		doc3, err := addDoc(t, "Genre", "", "3", tc)
+		doc4, err := addDoc(t, "Focal", "", "4", tc)
+		doc5, err := addDoc(t, "Priority", "", "5", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc1, doc12, doc2, doc3, doc4, doc5)
+		require.NoError(t, err)
+
+		build := tantivy_go.NewQueryBuilder().
+			Query(tantivy_go.Must, NameTitle, "o", tantivy_go.PhrasePrefixQuery, 1.0).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&build).
+			SetDocsLimit(100).
+			SetWithHighlights(true).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+		result, err := tc.SearchJson(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		require.Equal(t, 1, int(size))
+
+		//results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		//	var doc DocSample
+		//	return doc, json.Unmarshal([]byte(jsonStr), &doc)
+		//}, NameId, NameTitle, NameBody)
+		//require.NoError(t, err)
+		//
+		//require.Equal(t, len(results), int(size))
+		//require.NoError(t, err)
+		//
+		//for next := range results {
+		//	model := results[next].(DocSample)
+		//	require.Equal(t, DocSample{
+		//		"Create Body",
+		//		"1",
+		//		"Example title content.",
+		//		[]Highlight{
+		//			{
+		//				NameTitle,
+		//				Fragment{
+		//					[][2]int{{0, 2}, {0, 3}, {0, 4}},
+		//					"Crea",
+		//				},
+		//			}},
+		//	},
+		//		model)
+		//}
+		//
+		//docs, err := tc.NumDocs()
+		//require.NoError(t, err)
+		//require.Equal(t, uint64(1), docs)
+		//
+		//err = tc.DeleteDocuments(NameId, "1")
+		//require.NoError(t, err)
+		//docs, err = tc.NumDocs()
+		//require.Equal(t, uint64(0), docs)
+	})
+
 	t.Run("docs search and remove - when title and ngram", func(t *testing.T) {
 		schema, tc := fx(t, limit, minGram, false, false)
 
@@ -927,7 +1000,7 @@ type tantivyConfig struct {
 type fieldConfig struct {
 	name         string
 	stored       bool
-	indexed      bool
+	isText       bool
 	isFast       bool
 	recordOption int
 	tokenizer    string
@@ -1005,7 +1078,7 @@ func fxWithConfig(t *testing.T, config *tantivyConfig) (*tantivy_go.Schema, *tan
 		err = builder.AddTextField(
 			field.name,
 			field.stored,
-			field.indexed,
+			field.isText,
 			field.isFast,
 			field.recordOption,
 			field.tokenizer,

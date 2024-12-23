@@ -13,6 +13,9 @@ This library includes the Jieba feature by default, which provides Chinese text 
 ### Golang API to Create Custom Queries for Tantivy
 See `searchquerybuilder.go`
 
+## Search quality testing
+[Test quality](testquality/README.md)
+
 ## Installation
 
 ```bash

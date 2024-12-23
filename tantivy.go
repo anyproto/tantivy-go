@@ -21,7 +21,7 @@ import (
 	"sync"
 )
 
-const TokenizerSimple = "simple"
+const TokenizerSimple = "simple_tokenizer"
 const TokenizerNgram = "ngram"
 const TokenizerJieba = "jieba"
 const TokenizerEdgeNgram = "edge_ngram"
