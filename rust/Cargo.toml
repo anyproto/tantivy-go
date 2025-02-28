@@ -21,6 +21,8 @@ unicode-segmentation = "1.12.0"
 logcall = "0.1.11"
 lazy_static = "1.5.0"
 tantivy-jieba = { git = "https://github.com/anyproto/tantivy-jieba.git", rev = "ca11d3153b8844cbc43cd243667e03f56f6d1e18", optional = true }
+phf = { version = "0.11.2", features = ["macros"] }
+
 [features]
 default = ["jieba"]
 jieba = ["dep:tantivy-jieba"]
