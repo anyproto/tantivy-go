@@ -14,6 +14,15 @@ package tantivy_go
 #cgo linux,arm64 LDFLAGS:-L${SRCDIR}/libs/linux-arm64-musl -Wl,--allow-multiple-definition -ltantivy_go -lm
 #include "bindings.h"
 #include <stdlib.h>
+*/
+import "C"
+import (
+	"github.com/anyproto/tantivy-go/internal"
+	"sync"
+)
+
+// Activate after migration to the go 1.24
+/*
 #cgo nocallback schema_builder_build
 #cgo nocallback context_create_with_schema
 #cgo nocallback context_register_text_analyzer_ngram
@@ -59,11 +68,6 @@ package tantivy_go
 #cgo noescape document_free
 #cgo noescape string_free
 */
-import "C"
-import (
-	"github.com/anyproto/tantivy-go/internal"
-	"sync"
-)
 
 const TokenizerSimple = "simple_tokenizer"
 const TokenizerNgram = "ngram"
