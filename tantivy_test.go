@@ -42,7 +42,7 @@ type Highlight struct {
 func Test(t *testing.T) {
 
 	t.Run("docs search and remove - when by part of body", func(t *testing.T) {
-		schema, tc := fx(t, limit, minGram, false, false)
+		_, tc := fx(t, limit, minGram, false, false)
 
 		defer tc.Free()
 
@@ -65,7 +65,7 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		require.Equal(t, 1, int(size))
 
-		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		results, err := tantivy_go.GetSearchResults(result, tc, func(jsonStr string) (interface{}, error) {
 			var doc DocSample
 			return doc, json.Unmarshal([]byte(jsonStr), &doc)
 		}, NameId, NameTitle, NameBody)
@@ -103,7 +103,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search - when ngram", func(t *testing.T) {
-		schema, tc := fx(t, limit, 1, false, false)
+		_, tc := fx(t, limit, 1, false, false)
 
 		defer tc.Free()
 
@@ -128,7 +128,7 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		require.Equal(t, 1, int(size))
 
-		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		results, err := tantivy_go.GetSearchResults(result, tc, func(jsonStr string) (interface{}, error) {
 			var doc DocSample
 			return doc, json.Unmarshal([]byte(jsonStr), &doc)
 		}, NameId, NameTitle, NameBody)
@@ -150,7 +150,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search - when ngram json", func(t *testing.T) {
-		schema, tc := fx(t, limit, 1, true, false)
+		_, tc := fx(t, limit, 1, true, false)
 
 		defer tc.Free()
 
@@ -179,7 +179,7 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		require.Equal(t, 1, int(size))
 
-		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		results, err := tantivy_go.GetSearchResults(result, tc, func(jsonStr string) (interface{}, error) {
 			var doc DocSample
 			return doc, json.Unmarshal([]byte(jsonStr), &doc)
 		}, NameId, NameTitle, NameBody)
@@ -452,7 +452,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs fix utf8 - wrong utf8 - when lenient", func(t *testing.T) {
-		schema, tc := fx(t, limit, minGram, false, true)
+		_, tc := fx(t, limit, minGram, false, true)
 
 		defer tc.Free()
 
@@ -479,7 +479,7 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		require.Equal(t, 1, int(size))
 
-		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		results, err := tantivy_go.GetSearchResults(result, tc, func(jsonStr string) (interface{}, error) {
 			var doc DocSample
 			return doc, json.Unmarshal([]byte(jsonStr), &doc)
 		}, NameId, NameTitle, NameBody)
@@ -506,13 +506,13 @@ func Test(t *testing.T) {
 
 		invalidUtf8Hello := string([]byte{0x68, 0x65, 0x6c, 0x6c, 0x6f, 0xff})
 		doc := tantivy_go.NewDocument()
-		err := doc.AddField(NameBody, invalidUtf8Hello, tc)
+		err := doc.AddField(NameBody, tc, invalidUtf8Hello)
 
 		require.Error(t, err, "invalid utf-8 sequence of 1 bytes from index 5")
 	})
 
 	t.Run("docs search and remove - when title and edge", func(t *testing.T) {
-		schema, tc := fxWithConfig(t, defaultTokenizerConfig().apply(func(tc *tantivyConfig) {
+		_, tc := fxWithConfig(t, defaultTokenizerConfig().apply(func(tc *tantivyConfig) {
 			tc.modifyField(NameTitle, func(field *fieldConfig) {
 				field.tokenizer = tantivy_go.TokenizerEdgeNgram
 			})
@@ -538,7 +538,7 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		require.Equal(t, 1, int(size))
 
-		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		results, err := tantivy_go.GetSearchResults(result, tc, func(jsonStr string) (interface{}, error) {
 			var doc DocSample
 			return doc, json.Unmarshal([]byte(jsonStr), &doc)
 		}, NameId, NameTitle, NameBody)
@@ -611,7 +611,7 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		require.Equal(t, 1, int(size))
 
-		//results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		//results, err := tantivy_go.GetSearchResults(result, tc, func(jsonStr string) (interface{}, error) {
 		//	var doc DocSample
 		//	return doc, json.Unmarshal([]byte(jsonStr), &doc)
 		//}, NameId, NameTitle, NameBody)
@@ -649,7 +649,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search and remove - when title and ngram", func(t *testing.T) {
-		schema, tc := fx(t, limit, minGram, false, false)
+		_, tc := fx(t, limit, minGram, false, false)
 
 		defer tc.Free()
 
@@ -671,7 +671,7 @@ func Test(t *testing.T) {
 		size, err := result.GetSize()
 		require.Equal(t, 1, int(size))
 
-		results, err := tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (interface{}, error) {
+		results, err := tantivy_go.GetSearchResults(result, tc, func(jsonStr string) (interface{}, error) {
 			var doc DocSample
 			return doc, json.Unmarshal([]byte(jsonStr), &doc)
 		}, NameId, NameTitle, NameBody)
@@ -821,7 +821,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("docs search - when weights apply", func(t *testing.T) {
-		schema, tc := fx(t, limit, 1, false, false)
+		_, tc := fx(t, limit, 1, false, false)
 
 		defer tc.Free()
 
@@ -853,7 +853,7 @@ func Test(t *testing.T) {
 		require.Equal(t, 2, int(size))
 		resDoc, err := result.Get(0)
 		require.NoError(t, err)
-		jsonStr, err := resDoc.ToJson(schema, NameId)
+		jsonStr, err := resDoc.ToJson(tc, NameId)
 		require.NoError(t, err)
 		require.JSONEq(t, `{"highlights":[],"id":"id1","score":6.886753559112549}`, jsonStr)
 
@@ -872,7 +872,7 @@ func Test(t *testing.T) {
 		require.Equal(t, 2, int(size2))
 		resDoc2, err := result2.Get(0)
 		require.NoError(t, err)
-		jsonStr2, err := resDoc2.ToJson(schema, NameId)
+		jsonStr2, err := resDoc2.ToJson(tc, NameId)
 		require.NoError(t, err)
 		require.JSONEq(t, `{"highlights":[],"id":"id2","score":49.19108963012695}`, jsonStr2)
 	})
@@ -887,19 +887,15 @@ func addDoc(
 ) (*tantivy_go.Document, error) {
 	doc := tantivy_go.NewDocument()
 
-	err := doc.AddField(NameTitle, title, tc)
+	err := doc.AddFields(title, tc, NameTitle, NameBodyZh)
 	require.NoError(t, err)
 
-	err = doc.AddField(NameTitleZh, title, tc)
+	err = doc.AddField(id, tc, NameId)
 	require.NoError(t, err)
 
-	err = doc.AddField(NameId, id, tc)
+	err = doc.AddFields(body, tc, NameBody, NameBodyZh)
 	require.NoError(t, err)
 
-	err = doc.AddField(NameBody, body, tc)
-	require.NoError(t, err)
-
-	err = doc.AddField(NameBodyZh, body, tc)
 	return doc, err
 }
 

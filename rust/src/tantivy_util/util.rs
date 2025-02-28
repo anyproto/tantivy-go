@@ -1,16 +1,17 @@
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
-use tantivy::schema::{Field, OwnedValue};
+use tantivy::schema::document::ReferenceValueLeaf;
+use tantivy::schema::Field;
 use tantivy::tokenizer::{Token, TokenStream};
 use tantivy::{Index, Term};
 
 pub const DOCUMENT_BUDGET_BYTES: usize = 50_000_000;
 
 pub fn extract_text_from_owned_value<'a>(
-    value: &'a OwnedValue,
+    value: &'a ReferenceValueLeaf<'a>,
 ) -> Result<Cow<'a, str>, TantivyGoError> {
-    if let OwnedValue::Str(text) = value {
+    if let ReferenceValueLeaf::Str(text) = value {
         Ok(Cow::Borrowed(text))
     } else {
         Err(TantivyGoError("Only OwnedValue::Str is supported".to_string()))

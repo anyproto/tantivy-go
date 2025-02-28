@@ -9,9 +9,12 @@ import (
 type (
 	SchemaBuilder struct {
 		ptr        *C.SchemaBuilder
-		fieldNames map[string]struct{}
+		fieldNames map[string]int
 	}
-	Schema struct{ ptr *C.Schema }
+	Schema struct {
+		ptr        *C.Schema
+		fieldNames map[string]int
+	}
 )
 
 const (
@@ -53,7 +56,7 @@ func NewSchemaBuilder() (*SchemaBuilder, error) {
 	if ptr == nil {
 		return nil, errors.New("failed to create schema builder")
 	}
-	return &SchemaBuilder{ptr: ptr, fieldNames: make(map[string]struct{})}, nil
+	return &SchemaBuilder{ptr: ptr, fieldNames: make(map[string]int)}, nil
 }
 
 // AddTextField adds a text field to the schema being built.
@@ -78,13 +81,13 @@ func (b *SchemaBuilder) AddTextField(
 	if _, contains := b.fieldNames[name]; contains {
 		return errors.New("field already defined: " + name)
 	}
-	b.fieldNames[name] = struct{}{}
+	b.fieldNames[name] = -1
 	cName := C.CString(name)
 	cTokenizer := C.CString(tokenizer)
 	defer C.string_free(cName)
 	defer C.string_free(cTokenizer)
 	var errBuffer *C.char
-	C.schema_builder_add_text_field(
+	fieldId := C.schema_builder_add_text_field(
 		b.ptr,
 		cName,
 		C._Bool(stored),
@@ -94,6 +97,7 @@ func (b *SchemaBuilder) AddTextField(
 		cTokenizer,
 		&errBuffer,
 	)
+	b.fieldNames[name] = int(fieldId)
 	return tryExtractError(errBuffer)
 }
 
@@ -106,5 +110,8 @@ func (b *SchemaBuilder) BuildSchema() (*Schema, error) {
 		defer C.string_free(errBuffer)
 		return nil, errors.New(C.GoString(errBuffer))
 	}
-	return &Schema{ptr: ptr}, nil
+	return &Schema{
+		ptr:        ptr,
+		fieldNames: b.fieldNames,
+	}, nil
 }

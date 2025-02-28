@@ -25,19 +25,45 @@ func NewDocument() *Document {
 // Returns an error if adding the field fails.
 //
 // Parameters:
-//   - fieldName: the name of the field to add
 //   - fieldValue: the value of the field to add
 //   - index: the index to use for adding the field
+//   - fieldName: the name of the field to add
 //
 // Returns:
 //   - error: an error if adding the field fails, or nil if the operation is successful
-func (d *Document) AddField(fieldName, fieldValue string, tc *TantivyContext) error {
-	cFieldName := C.CString(fieldName)
-	d.toFree = append(d.toFree, func() { C.string_free(cFieldName) })
+func (d *Document) AddField(fieldValue string, tc *TantivyContext, fieldName string) error {
+	fieldId, contains := tc.schema.fieldNames[fieldName]
+	if !contains {
+		return errors.New("field not found in schema")
+	}
 	cFieldValue := C.CString(fieldValue)
 	d.toFree = append(d.toFree, func() { C.string_free(cFieldValue) })
 	var errBuffer *C.char
-	C.document_add_field(d.ptr, cFieldName, cFieldValue, tc.ptr, &errBuffer)
+	C.document_add_field(d.ptr, C.uint(fieldId), cFieldValue, &errBuffer)
+
+	return tryExtractError(errBuffer)
+}
+
+// AddFields adds a field with the specified name and value to the document using the given index.
+// Returns an error if adding the field fails.
+//
+// Parameters:
+//   - fieldValue: the value of the field to add
+//   - index: the index to use for adding the field
+//   - fieldNames: the names of the fields to add
+//
+// Returns:
+//   - error: an error if adding the field fails, or nil if the operation is successful
+func (d *Document) AddFields(fieldValue string, tc *TantivyContext, fieldNames ...string) error {
+	includeFieldsPtr, err := tc.extractFields(fieldNames)
+	if err != nil {
+		return err
+	}
+
+	cFieldValue := C.CString(fieldValue)
+	d.toFree = append(d.toFree, func() { C.string_free(cFieldValue) })
+	var errBuffer *C.char
+	C.document_add_fields(d.ptr, (*C.uint)(unsafe.Pointer(&includeFieldsPtr[0])), C.uintptr_t(len(includeFieldsPtr)), cFieldValue, &errBuffer)
 
 	return tryExtractError(errBuffer)
 }
@@ -52,17 +78,22 @@ func (d *Document) AddField(fieldName, fieldValue string, tc *TantivyContext) er
 // Returns:
 //   - string: the JSON representation of the document
 //   - error: an error if the conversion fails, or nil if the operation is successful
-func (d *Document) ToJson(schema *Schema, includeFields ...string) (string, error) {
+func (d *Document) ToJson(tc *TantivyContext, includeFields ...string) (string, error) {
 	var errBuffer *C.char
 
-	includeFieldsPtr := make([]*C.char, len(includeFields))
-	for i, field := range includeFields {
-		includedField := C.CString(field)
-		defer C.free(unsafe.Pointer(includedField))
-		includeFieldsPtr[i] = includedField
+	includeFieldsPtr, err := tc.extractFields(includeFields)
+	if err != nil {
+		return "", err
 	}
 
-	cStr := C.document_as_json(d.ptr, (**C.char)(unsafe.Pointer(&includeFieldsPtr[0])), C.uintptr_t(len(includeFields)), schema.ptr, &errBuffer)
+	cStr := C.document_as_json(
+		d.ptr,
+		(*C.uint)(unsafe.Pointer(&includeFieldsPtr[0])),
+		C.uintptr_t(len(includeFields)),
+		tc.schema.ptr,
+		&errBuffer,
+	)
+
 	if cStr == nil {
 		errorMessage := C.GoString(errBuffer)
 		defer C.string_free(errBuffer)
@@ -84,8 +115,8 @@ func (d *Document) ToJson(schema *Schema, includeFields ...string) (string, erro
 // Returns:
 //   - T: the model of type T resulting from the conversion
 //   - error: an error if the conversion fails, or nil if the operation is successful
-func ToModel[T any](doc *Document, schema *Schema, includeFields []string, f func(json string) (T, error)) (T, error) {
-	json, err := doc.ToJson(schema, includeFields...)
+func ToModel[T any](doc *Document, tc *TantivyContext, includeFields []string, f func(json string) (T, error)) (T, error) {
+	json, err := doc.ToJson(tc, includeFields...)
 	if err != nil {
 		var zero T
 		return zero, err
