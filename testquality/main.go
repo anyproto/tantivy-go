@@ -178,7 +178,7 @@ func searchTantivy(
 		return nil, fmt.Errorf("failed to search index: %w", err)
 	}
 
-	return tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (*DocSample, error) {
+	return tantivy_go.GetSearchResults(result, index, func(jsonStr string) (*DocSample, error) {
 		var doc DocSample
 		return &doc, json.Unmarshal([]byte(jsonStr), &doc)
 	}, NameId)
@@ -217,7 +217,7 @@ func searchJson(
 		return nil, fmt.Errorf("failed to search index: %w", err)
 	}
 
-	return tantivy_go.GetSearchResults(result, schema, func(jsonStr string) (*DocSample, error) {
+	return tantivy_go.GetSearchResults(result, index, func(jsonStr string) (*DocSample, error) {
 		var doc DocSample
 		return &doc, json.Unmarshal([]byte(jsonStr), &doc)
 	}, NameId)
