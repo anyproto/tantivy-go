@@ -1019,7 +1019,7 @@ func fxWithConfig(t *testing.T, config *tantivyConfig) (*tantivy_go.Schema, *tan
 	for _, tokenizer := range config.tokenizerConfigs {
 		switch tokenizer.Type {
 		case tantivy_go.TokenizerSimple:
-			err = tc.RegisterTextAnalyzerSimple(tokenizer.Type, tokenizer.args[0].(uintptr), tokenizer.args[1].(string))
+			err = tc.RegisterTextAnalyzerSimple(tokenizer.Type, tokenizer.args[0].(uintptr), tokenizer.args[1].(tantivy_go.Language))
 		case tantivy_go.TokenizerJieba:
 			err = tc.RegisterTextAnalyzerJieba(tokenizer.Type, tokenizer.args[0].(uintptr))
 		case tantivy_go.TokenizerEdgeNgram:
