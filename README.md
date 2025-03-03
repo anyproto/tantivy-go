@@ -13,7 +13,7 @@ Check out the last link for details on the performance comparison.
 Credits for the image to the Tantivy team
 
 # Our Journey with Tantivy
-We've been running it in production for over a year across all major platforms and architectures without issues on 32-bit and 64-bit systems, x86 and ARM64, iOS, Android, PC, macOS, and Linux.
+We've been running it in [Anytype](https://github.com/anyproto/anytype-heart) for over a year across all major platforms and architectures without issues on 32-bit and 64-bit systems, x86 and ARM64, iOS, Android, PC, macOS, and Linux.
 
 ## Features
 ### Jieba Tokenizer
