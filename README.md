@@ -12,6 +12,9 @@ Check out the last link for details on the performance comparison.
 ![Search Benchmark](https://github.com/quickwit-oss/tantivy/blob/main/doc/assets/images/searchbenchmark.png)
 Credits for the image to the Tantivy team
 
+# Our Journey with Tantivy
+We've been running it in production for over a year across all major platforms and architectures without issues on 32-bit and 64-bit systems, x86 and ARM64, iOS, Android, PC, macOS, and Linux.
+
 ## Features
 ### Jieba Tokenizer
 This library includes the Jieba feature by default, which provides Chinese text segmentation. However, if you do not need this functionality, you can build the library without it to save approximately 5MB of the dictionary.
