@@ -244,10 +244,10 @@ func (tc *TantivyContext) RegisterTextAnalyzerEdgeNgram(tokenizerName string, mi
 //
 // Returns:
 //   - error: An error if the registration fails.
-func (tc *TantivyContext) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintptr, lang string) error {
+func (tc *TantivyContext) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintptr, lang Language) error {
 	cTokenizerName := C.CString(tokenizerName)
 	defer C.string_free(cTokenizerName)
-	cLang := C.CString(lang)
+	cLang := C.CString(string(lang))
 	defer C.string_free(cLang)
 	var errBuffer *C.char
 	C.context_register_text_analyzer_simple(tc.ptr, cTokenizerName, C.uintptr_t(textLimit), cLang, &errBuffer)
