@@ -15,3 +15,4 @@ pub use self::util::search_json;
 pub use self::util::drop_any;
 pub use self::util::get_doc;
 pub use self::util::add_field;
+pub use self::util::add_fields;

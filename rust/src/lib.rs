@@ -1,15 +1,19 @@
 use logcall::logcall;
-use std::ffi::CString;
+use std::ffi::{c_uint, CString};
 use std::os::raw::{c_char, c_float};
 use std::ptr;
 use tantivy::schema::*;
 
 use crate::c_util::{
-    add_and_consume_documents, add_field, assert_pointer, assert_str, assert_string, box_from,
-    convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc, search,
-    search_json, set_error, start_lib_init,
+    add_and_consume_documents, add_field, add_fields, assert_pointer, assert_str, assert_string,
+    box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc,
+    search, search_json, set_error, start_lib_init,
 };
-use crate::tantivy_util::{add_text_field, register_edge_ngram_tokenizer, register_jieba_tokenizer, register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, Document, SearchResult, TantivyContext, TantivyGoError};
+use crate::tantivy_util::{
+    add_text_field, register_edge_ngram_tokenizer, register_jieba_tokenizer,
+    register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, Document,
+    SearchResult, TantivyContext, TantivyGoError,
+};
 
 mod c_util;
 mod config;
@@ -33,8 +37,8 @@ pub extern "C" fn schema_builder_add_text_field(
     index_record_option_const: usize,
     tokenizer_name_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
-) {
-    let result = || -> Result<(), TantivyGoError> {
+) -> u32 {
+    let result = || -> Result<u32, TantivyGoError> {
         let builder = assert_pointer(builder_ptr)?;
         let tokenizer_name = assert_string(tokenizer_name_ptr)?;
         let field_name = assert_string(field_name_ptr)?;
@@ -43,10 +47,14 @@ pub extern "C" fn schema_builder_add_text_field(
             0 => IndexRecordOption::Basic,
             1 => IndexRecordOption::WithFreqs,
             2 => IndexRecordOption::WithFreqsAndPositions,
-            _ => return Err(TantivyGoError("Invalid index_record_option_const".to_string())),
+            _ => {
+                return Err(TantivyGoError(
+                    "Invalid index_record_option_const".to_string(),
+                ))
+            }
         };
 
-        add_text_field(
+        Ok(add_text_field(
             stored,
             is_text,
             is_fast,
@@ -54,16 +62,17 @@ pub extern "C" fn schema_builder_add_text_field(
             tokenizer_name.as_str(),
             field_name.as_str(),
             index_record_option,
-        );
-
-        Ok(())
+        ))
     };
 
-    if let Err(err) = result() {
-        set_error(&err.to_string(), error_buffer);
+    match result() {
+        Ok(val) => val,
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            0
+        }
     }
 }
-
 
 #[logcall]
 #[no_mangle]
@@ -104,8 +113,6 @@ pub extern "C" fn context_create_with_schema(
     }
 }
 
-
-
 #[logcall]
 #[no_mangle]
 pub extern "C" fn context_register_text_analyzer_ngram(
@@ -119,7 +126,13 @@ pub extern "C" fn context_register_text_analyzer_ngram(
     let result = || -> Result<(), TantivyGoError> {
         let context = assert_pointer(context_ptr)?;
         let tokenizer_name = assert_string(tokenizer_name_ptr)?;
-        register_ngram_tokenizer(min_gram, max_gram, prefix_only, &context.index, tokenizer_name.as_str())?;
+        register_ngram_tokenizer(
+            min_gram,
+            max_gram,
+            prefix_only,
+            &context.index,
+            tokenizer_name.as_str(),
+        )?;
         Ok(())
     };
 
@@ -127,7 +140,6 @@ pub extern "C" fn context_register_text_analyzer_ngram(
         set_error(&err.to_string(), error_buffer);
     }
 }
-
 
 #[logcall]
 #[no_mangle]
@@ -142,7 +154,13 @@ pub extern "C" fn context_register_text_analyzer_edge_ngram(
     let result = || -> Result<(), TantivyGoError> {
         let context = assert_pointer(context_ptr)?;
         let tokenizer_name = assert_string(tokenizer_name_ptr)?;
-        register_edge_ngram_tokenizer(min_gram, max_gram, limit, &context.index, tokenizer_name.as_str());
+        register_edge_ngram_tokenizer(
+            min_gram,
+            max_gram,
+            limit,
+            &context.index,
+            tokenizer_name.as_str(),
+        );
         Ok(())
     };
 
@@ -150,7 +168,6 @@ pub extern "C" fn context_register_text_analyzer_edge_ngram(
         set_error(&err.to_string(), error_buffer);
     }
 }
-
 
 #[logcall]
 #[no_mangle]
@@ -174,7 +191,6 @@ pub extern "C" fn context_register_text_analyzer_simple(
     }
 }
 
-
 #[logcall]
 #[no_mangle]
 pub extern "C" fn context_register_jieba_tokenizer(
@@ -195,7 +211,6 @@ pub extern "C" fn context_register_jieba_tokenizer(
     }
 }
 
-
 #[logcall]
 #[no_mangle]
 pub extern "C" fn context_register_text_analyzer_raw(
@@ -214,7 +229,6 @@ pub extern "C" fn context_register_text_analyzer_raw(
         set_error(&err.to_string(), error_buffer);
     }
 }
-
 
 #[logcall]
 #[no_mangle]
@@ -235,20 +249,18 @@ pub extern "C" fn context_add_and_consume_documents(
     }
 }
 
-
 #[logcall]
 #[no_mangle]
 pub extern "C" fn context_delete_documents(
     context_ptr: *mut TantivyContext,
-    field_name_ptr: *const c_char,
+    field_id: c_uint,
     delete_ids_ptr: *mut *const c_char,
     delete_ids_len: usize,
     error_buffer: *mut *mut c_char,
 ) {
     let result = || -> Result<(), TantivyGoError> {
         let context = assert_pointer(context_ptr)?;
-        let field_name = assert_str(field_name_ptr)?;
-        delete_docs(delete_ids_ptr, delete_ids_len, context, field_name)?;
+        delete_docs(delete_ids_ptr, delete_ids_len, context, field_id)?;
         Ok(())
     };
 
@@ -256,7 +268,6 @@ pub extern "C" fn context_delete_documents(
         set_error(&err.to_string(), error_buffer);
     }
 }
-
 
 #[logcall]
 #[no_mangle]
@@ -278,14 +289,13 @@ pub extern "C" fn context_num_docs(
     }
 }
 
-
 #[logcall]
 #[no_mangle]
 pub extern "C" fn context_search(
     context_ptr: *mut TantivyContext,
-    field_names_ptr: *mut *const c_char,
+    field_ids_ptr: *mut c_uint,
     field_weights_ptr: *mut c_float,
-    field_names_len: usize,
+    field_ids_len: usize,
     query_ptr: *const c_char,
     error_buffer: *mut *mut c_char,
     docs_limit: usize,
@@ -295,9 +305,9 @@ pub extern "C" fn context_search(
         let context = assert_pointer(context_ptr)?;
 
         search(
-            field_names_ptr,
+            field_ids_ptr,
             field_weights_ptr,
-            field_names_len,
+            field_ids_len,
             query_ptr,
             docs_limit,
             context,
@@ -313,7 +323,6 @@ pub extern "C" fn context_search(
         }
     }
 }
-
 
 #[logcall]
 #[no_mangle]
@@ -327,12 +336,7 @@ pub extern "C" fn context_search_json(
     let result = || -> Result<*mut SearchResult, TantivyGoError> {
         let context = assert_pointer(context_ptr)?;
 
-        search_json(
-            query_ptr,
-            docs_limit,
-            context,
-            with_highlights,
-        )
+        search_json(query_ptr, docs_limit, context, with_highlights)
     };
 
     match result() {
@@ -343,7 +347,6 @@ pub extern "C" fn context_search_json(
         }
     }
 }
-
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[logcall]
@@ -372,7 +375,6 @@ pub extern "C" fn search_result_get_size(
     }
 }
 
-
 #[logcall]
 #[no_mangle]
 pub extern "C" fn search_result_get_doc(
@@ -393,7 +395,6 @@ pub extern "C" fn search_result_get_doc(
         }
     }
 }
-
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[logcall]
@@ -416,18 +417,15 @@ pub extern "C" fn document_create() -> *mut Document {
 #[no_mangle]
 pub extern "C" fn document_add_field(
     doc_ptr: *mut Document,
-    field_name_ptr: *const c_char,
+    field_id: c_uint,
     field_value_ptr: *const c_char,
-    context_ptr: *mut TantivyContext,
     error_buffer: *mut *mut c_char,
 ) {
     let result = || -> Result<(), TantivyGoError> {
         let doc = assert_pointer(doc_ptr)?;
-        let context = assert_pointer(context_ptr)?;
-        let field_name = assert_str(field_name_ptr)?;
         let field_value = assert_str(field_value_ptr)?;
 
-        add_field(doc, &context.index, field_name, &field_value)
+        add_field(doc, field_id, &field_value)
     };
 
     match result() {
@@ -438,13 +436,37 @@ pub extern "C" fn document_add_field(
     }
 }
 
+#[logcall]
+#[no_mangle]
+pub extern "C" fn document_add_fields(
+    doc_ptr: *mut Document,
+    field_ids_ptr: *mut c_uint,
+    field_ids_len: usize,
+    field_value_ptr: *const c_char,
+    error_buffer: *mut *mut c_char,
+) {
+    let result = || -> Result<(), TantivyGoError> {
+        let doc = assert_pointer(doc_ptr)?;
+        let field_ids = assert_pointer(field_ids_ptr)?;
+        let field_value = assert_str(field_value_ptr)?;
+
+        add_fields(doc, field_ids, field_ids_len, &field_value)
+    };
+
+    match result() {
+        Ok(_) => {}
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+        }
+    }
+}
 
 #[logcall]
 #[no_mangle]
 pub extern "C" fn document_as_json(
     doc_ptr: *mut Document,
-    include_fields_ptr: *mut *const c_char,
-    include_fields_len: usize,
+    include_field_ids_ptr: *mut c_uint,
+    include_field_ids_len: usize,
     schema_ptr: *mut Schema,
     error_buffer: *mut *mut c_char,
 ) -> *mut c_char {
@@ -452,12 +474,7 @@ pub extern "C" fn document_as_json(
         let doc = assert_pointer(doc_ptr)?;
         let schema = assert_pointer(schema_ptr)?.clone();
 
-        convert_document_as_json(
-            include_fields_ptr,
-            include_fields_len,
-            doc,
-            schema,
-        )
+        convert_document_as_json(include_field_ids_ptr, include_field_ids_len, doc, schema)
     };
 
     match result() {
@@ -474,7 +491,6 @@ pub extern "C" fn document_as_json(
         }
     }
 }
-
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[logcall]

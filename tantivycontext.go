@@ -10,8 +10,9 @@ import (
 )
 
 type TantivyContext struct {
-	ptr  *C.TantivyContext
-	lock sync.Mutex // tantivy writer commits should be executed exclusively
+	ptr    *C.TantivyContext
+	schema *Schema
+	lock   sync.Mutex // tantivy writer commits should be executed exclusively
 }
 
 // NewTantivyContextWithSchema creates a new instance of TantivyContext with the provided schema.
@@ -32,7 +33,10 @@ func NewTantivyContextWithSchema(path string, schema *Schema) (*TantivyContext, 
 		defer C.string_free(errBuffer)
 		return nil, errors.New(C.GoString(errBuffer))
 	}
-	return &TantivyContext{ptr: ptr}, nil
+	return &TantivyContext{
+		ptr:    ptr,
+		schema: schema,
+	}, nil
 }
 
 // AddAndConsumeDocuments adds and consumes the provided documents to the index.
@@ -67,19 +71,21 @@ func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
 // DeleteDocuments deletes documents from the index based on the specified field and IDs.
 //
 // Parameters:
-//   - field: The field name to match against the document IDs.
+//   - fieldName: The field name to match against the document IDs.
 //   - deleteIds: A variadic parameter of document IDs to be deleted.
 //
 // Returns:
 //   - error: An error if deleting the documents fails.
-func (tc *TantivyContext) DeleteDocuments(field string, deleteIds ...string) error {
+func (tc *TantivyContext) DeleteDocuments(fieldName string, deleteIds ...string) error {
 	tc.lock.Lock()
 	defer tc.lock.Unlock()
 	if len(deleteIds) == 0 {
 		return nil
 	}
-	cField := C.CString(field)
-	defer C.string_free(cField)
+	fieldId, contains := tc.schema.fieldNames[fieldName]
+	if !contains {
+		return errors.New("field not found in schema")
+	}
 
 	deleteIDsPtr := make([]*C.char, len(deleteIds))
 	for j, id := range deleteIds {
@@ -90,7 +96,7 @@ func (tc *TantivyContext) DeleteDocuments(field string, deleteIds ...string) err
 	cDeleteIds := (**C.char)(unsafe.Pointer(&deleteIDsPtr[0]))
 
 	var errBuffer *C.char
-	C.context_delete_documents(tc.ptr, cField, cDeleteIds, C.uintptr_t(len(deleteIds)), &errBuffer)
+	C.context_delete_documents(tc.ptr, C.uint(fieldId), cDeleteIds, C.uintptr_t(len(deleteIds)), &errBuffer)
 	return tryExtractError(errBuffer)
 }
 
@@ -126,11 +132,9 @@ func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
 	cQuery := C.CString(sCtx.GetQuery())
 	defer C.string_free(cQuery)
 
-	fieldNamesPtr := make([]*C.char, len(fieldNames))
-	for j, id := range fieldNames {
-		cId := C.CString(id)
-		defer C.free(unsafe.Pointer(cId))
-		fieldNamesPtr[j] = cId
+	fieldNamesPtr, err := tc.extractFields(fieldNames)
+	if err != nil {
+		return nil, err
 	}
 
 	fieldWeightsPtr := make([]C.float, len(fieldNames))
@@ -141,7 +145,7 @@ func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
 	var errBuffer *C.char
 	ptr := C.context_search(
 		tc.ptr,
-		(**C.char)(unsafe.Pointer(&fieldNamesPtr[0])),
+		(*C.uint)(unsafe.Pointer(&fieldNamesPtr[0])),
 		(*C.float)(unsafe.Pointer(&fieldWeightsPtr[0])),
 		C.uintptr_t(len(fieldNames)),
 		cQuery,
@@ -296,7 +300,7 @@ func (tc *TantivyContext) RegisterTextAnalyzerRaw(tokenizerName string) error {
 //   - ([]T, error): A slice of models obtained from the search results, and an error if something goes wrong.
 func GetSearchResults[T any](
 	searchResult *SearchResult,
-	schema *Schema,
+	tc *TantivyContext,
 	f func(json string) (T, error),
 	includeFields ...string,
 ) ([]T, error) {
@@ -315,7 +319,7 @@ func GetSearchResults[T any](
 		if err != nil {
 			break
 		}
-		model, err := ToModel(doc, schema, includeFields, f)
+		model, err := ToModel(doc, tc, includeFields, f)
 		if err != nil {
 			return nil, err
 		}
@@ -323,4 +327,20 @@ func GetSearchResults[T any](
 		doc.Free()
 	}
 	return models, nil
+}
+
+func (tc *TantivyContext) extractFields(fieldNames []string) ([]C.uint, error) {
+	if len(fieldNames) == 0 {
+		return nil, errors.New("field names is empty")
+	}
+
+	includeFieldsPtr := make([]C.uint, len(fieldNames))
+	for i, fieldName := range fieldNames {
+		fieldId, contains := tc.schema.fieldNames[fieldName]
+		if !contains {
+			return nil, errors.New("field not found in schema")
+		}
+		includeFieldsPtr[i] = C.uint(fieldId)
+	}
+	return includeFieldsPtr, nil
 }

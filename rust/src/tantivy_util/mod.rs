@@ -5,7 +5,6 @@ mod tokenizer;
 mod highlights;
 mod util;
 mod scheme_builder;
-mod scheme;
 mod document;
 
 pub use self::edge_ngram_tokenizer::EdgeNgramTokenizer;
@@ -17,7 +16,6 @@ pub use self::models::SearchResult;
 pub use self::highlights::find_highlights;
 pub use self::document::convert_document_to_json;
 pub use self::scheme_builder::add_text_field;
-pub use self::scheme::get_string_field_entry;
 pub use self::tokenizer::register_edge_ngram_tokenizer;
 pub use self::tokenizer::register_simple_tokenizer;
 pub use self::tokenizer::register_jieba_tokenizer;

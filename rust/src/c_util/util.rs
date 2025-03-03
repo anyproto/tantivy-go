@@ -1,16 +1,16 @@
 use crate::config;
 use crate::queries::parse_query_from_json;
 use crate::tantivy_util::{
-    convert_document_to_json, find_highlights, get_string_field_entry, Document, SearchResult,
+    convert_document_to_json, find_highlights, Document, SearchResult,
     TantivyContext, TantivyGoError, DOCUMENT_BUDGET_BYTES,
 };
 use log::debug;
 use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::ffi::{CStr, CString};
+use std::ffi::{c_uint, CStr, CString};
 use std::os::raw::{c_char, c_float};
-use std::panic::PanicInfo;
+use std::panic::PanicHookInfo;
 use std::path::Path;
 use std::{fs, panic, slice};
 use tantivy::directory::MmapDirectory;
@@ -80,7 +80,9 @@ where
     F: FnMut(*mut T) -> Result<(), TantivyGoError>,
 {
     let slice = unsafe { slice::from_raw_parts(assert_pointer(ptr)?, len) };
-    slice.iter().try_for_each(|&item| func(assert_pointer(item)?) )?;
+    slice
+        .iter()
+        .try_for_each(|&item| func(assert_pointer(item)?))?;
     Ok(())
 }
 
@@ -97,44 +99,31 @@ where
     Ok(())
 }
 
-
 pub fn process_slice<'a, F, T>(ptr: *mut T, len: usize, mut func: F) -> Result<(), TantivyGoError>
 where
     F: FnMut(usize, T) -> Result<(), TantivyGoError>,
     T: Copy,
 {
     let slice = unsafe { slice::from_raw_parts(assert_pointer(ptr)?, len) };
-    slice.iter().enumerate().try_for_each(|(i, &item)| func(i, item))?;
+    slice
+        .iter()
+        .enumerate()
+        .try_for_each(|(i, &item)| func(i, item))?;
     Ok(())
 }
 
-
-pub fn schema_apply_for_field<
-    'a, T, K,
-    F: FnMut(Field, Cow<'a, str>) -> Result<T, TantivyGoError>,
->(
-    schema: Schema,
-    field_name: Cow<'a, str>,
-    mut func: F,
-) -> Result<T, TantivyGoError> {
-    schema.get_field(&field_name)
-        .map(|field| func(field, field_name))
-        .unwrap_or_else(|err| Err(TantivyGoError::from_err("Get field error", &err.to_string())))
-}
-
 pub fn convert_document_as_json(
-    include_fields_ptr: *mut *const c_char,
-    include_fields_len: usize,
+    field_ids: *mut c_uint,
+    field_ids_len: usize,
     doc: &mut Document,
     schema: Schema,
 ) -> Result<String, TantivyGoError> {
     let mut field_to_name = HashMap::new();
 
-    process_string_slice(include_fields_ptr, include_fields_len, |field_name| {
-        schema_apply_for_field::<(), (), _>(schema.clone(), field_name, |field, field_name| {
-            field_to_name.insert(field, field_name);
-            Ok(())
-        })
+    process_slice(field_ids, field_ids_len, |_, field_id| {
+        let field = Field::from_field_id(field_id);
+        field_to_name.insert(field, Cow::from(schema.get_field_name(field)));
+        Ok(())
     })?;
 
     let doc_json = convert_document_to_json(doc, &field_to_name)?;
@@ -162,8 +151,7 @@ fn set_utf8_lenient(utf8_lenient: bool) {
     }
 }
 
-
-fn handle_panic(old_hook: Box<dyn Fn(&PanicInfo) + Sync + Send>) {
+fn handle_panic(old_hook: Box<dyn Fn(&PanicHookInfo) + Sync + Send>) {
     panic::set_hook(Box::new(move |panic_info| {
         if let Ok(config) = config::CONFIG.read() {
             let fts_path = config.fts_path.as_str();
@@ -240,17 +228,9 @@ pub fn delete_docs<'a>(
     delete_ids_ptr: *mut *const c_char,
     delete_ids_len: usize,
     context: &mut TantivyContext,
-    field_name: Cow<'a, str>,
+    field_id: u32,
 ) -> Result<(), TantivyGoError> {
-    let schema = context.index.schema();
-
-    let field = schema_apply_for_field::<Field, (), _>(schema.clone(), field_name, |field, _| {
-        get_string_field_entry(schema.clone(), field)
-    })
-    .map_err(|err| {
-        rollback(&mut context.writer);
-        err
-    })?;
+    let field = Field::from_field_id(field_id);
 
     process_string_slice(delete_ids_ptr, delete_ids_len, |id_value| {
         context
@@ -285,17 +265,28 @@ pub fn get_doc<'a>(
     Ok(Box::into_raw(Box::new(doc)))
 }
 
-pub fn add_field<'a>(
+pub fn add_fields<'a>(
     doc: &mut Document,
-    index: &Index,
-    field_name: Cow<'a, str>,
+    field_ids: *mut c_uint,
+    field_ids_len: usize,
     field_value: &str,
 ) -> Result<(), TantivyGoError> {
-    let field =
-        schema_apply_for_field::<Field, (), _>(index.schema(), field_name, |field, _| Ok(field))
-            .map_err(|err| err)?;
+    process_slice(field_ids, field_ids_len, |_, field_id| {
+        doc.tantivy_doc
+            .add_text(Field::from_field_id(field_id), field_value);
+        Ok(())
+    })?;
 
-    doc.tantivy_doc.add_text(field, field_value);
+    Ok(())
+}
+
+pub fn add_field<'a>(
+    doc: &mut Document,
+    field_id: u32,
+    field_value: &str,
+) -> Result<(), TantivyGoError> {
+    doc.tantivy_doc
+        .add_text(Field::from_field_id(field_id), field_value);
     Ok(())
 }
 
@@ -319,6 +310,8 @@ where
 
     let mut documents = Vec::new();
     for (score, doc_address) in top_docs {
+        //let explanation = query.explain(&searcher, doc_address).unwrap();
+        //debug!("### exp {:#?}", explanation);
         let doc = searcher
             .doc::<TantivyDocument>(doc_address)
             .map_err(|err| TantivyGoError(err.to_string()))?;
@@ -332,33 +325,26 @@ where
     }
 
     let size = documents.len();
-    Ok(Box::into_raw(Box::new(SearchResult {
-        documents,
-        size,
-    })))
+    Ok(Box::into_raw(Box::new(SearchResult { documents, size })))
 }
 
 pub fn search(
-    field_names_ptr: *mut *const c_char,
+    field_ids: *mut c_uint,
     field_weights_ptr: *mut c_float,
-    field_names_len: usize,
+    field_ids_len: usize,
     query_ptr: *const c_char,
     docs_limit: usize,
     context: &mut TantivyContext,
     with_highlights: bool,
 ) -> Result<*mut SearchResult, TantivyGoError> {
-    let schema = context.index.schema();
-
-    let mut fields = Vec::with_capacity(field_names_len);
-    process_string_slice(field_names_ptr, field_names_len, |field_name| {
-        schema_apply_for_field::<(), (), _>(schema.clone(), field_name, |field, _| {
-            fields.push(field);
-            Ok(())
-        })
+    let mut fields = Vec::with_capacity(field_ids_len);
+    process_slice(field_ids, field_ids_len, |_, field_id| {
+        fields.push(Field::from_field_id(field_id));
+        Ok(())
     })?;
 
-    let mut weights = HashMap::with_capacity(field_names_len);
-    process_slice(field_weights_ptr, field_names_len, |i, field_weight| {
+    let mut weights = HashMap::with_capacity(field_ids_len);
+    process_slice(field_weights_ptr, field_ids_len, |i, field_weight| {
         weights.insert(fields[i], field_weight);
         Ok(())
     })?;
