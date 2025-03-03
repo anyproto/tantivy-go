@@ -9,8 +9,8 @@ The library is thread safe and can be used in a concurrent environment
 The only available FTS engine in the Golang community is [Bleve](https://github.com/blevesearch/bleve), which is surprisingly slow compared to [Tantivy](https://github.com/quickwit-oss/tantivy).
 Check out the last link for details on the performance comparison.
 
-Credits for the image to the Tantivy team
 ![Search Benchmark](https://github.com/quickwit-oss/tantivy/blob/main/doc/assets/images/searchbenchmark.png)
+Credits for the image to the Tantivy team
 
 ## Features
 ### Jieba Tokenizer
