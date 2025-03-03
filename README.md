@@ -4,6 +4,13 @@ This project provides Go bindings for the [Tantivy](https://github.com/quickwit-
 
 The library is thread safe and can be used in a concurrent environment
 
+# Why
+
+The only available engine in the Golang community is [Bleve](https://github.com/blevesearch/bleve), which is surprisingly slow compared to [Tantivy](https://github.com/quickwit-oss/tantivy).
+See the link above for the details of performance comparison.
+
+![Search Benchmark](https://github.com/quickwit-oss/tantivy/blob/main/doc/assets/images/searchbenchmark.png)
+
 ## Features
 ### Jieba Tokenizer
 This library includes the Jieba feature by default, which provides Chinese text segmentation. However, if you do not need this functionality, you can build the library without it to save approximately 5MB of the dictionary.
