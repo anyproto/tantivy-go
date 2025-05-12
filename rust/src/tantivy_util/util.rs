@@ -36,8 +36,9 @@ pub fn extract_terms(
     if terms.len() > 0 {
         Ok(terms)
     } else {
+        let q_len = query.len();
         Err(TantivyGoError(format!(
-            "Zero terms were extracted for a query: {query}"
+            "Zero terms were extracted for a query.len() = {q_len}"
         )))
     }
 }
