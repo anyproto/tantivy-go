@@ -356,9 +356,9 @@ mod tests {
         let fq = FinalQuery {
             texts: vec!["".into(), "hello".into()],
             fields: vec!["f1".into(), "f2".into()],
-            query: GoBool { subqueries: vec![
-                GoElem { query: Some(GoQuery::PhraseQuery { field_index: 0, text_index: 0, boost: 1.0 }), modifier: QueryModifier::Must },
-                GoElem { query: Some(GoQuery::PhraseQuery { field_index: 1, text_index: 1, boost: 1.0 }), modifier: QueryModifier::Must },
+            query: BoolQuery { subqueries: vec![
+                QueryElement { query: Some(GoQuery::PhraseQuery { field_index: 0, text_index: 0, boost: 1.0 }), modifier: QueryModifier::Must },
+                QueryElement { query: Some(GoQuery::PhraseQuery { field_index: 1, text_index: 1, boost: 1.0 }), modifier: QueryModifier::Must },
             ]},
         };
 
