@@ -18,8 +18,8 @@ pub fn convert_to_tantivy(
         ));
     }
 
-    /// Converts a single QueryElement into an Option<(Occur, Query)>.
-    /// Returns Ok(None) if extract_terms() yields zero terms.
+    /// Convert a QueryElement into an optional Tantivy Query.
+    /// Returns Ok(None) if the clause yields zero terms.
     fn element_to_query(
         index: &Index,
         element: &QueryElement,
@@ -33,29 +33,27 @@ pub fn convert_to_tantivy(
             QueryModifier::MustNot => Occur::MustNot,
         };
 
-        let get_field_and_text = |fi: usize, ti: usize| -> Result<(tantivy::schema::Field, &str), TantivyGoError> {
-            let field_name = fields.get(fi)
+        let get_field_and_text = |fi: usize, ti: usize| -> Result<(_, _), TantivyGoError> {
+            let f_name = fields.get(fi)
                 .ok_or_else(|| TantivyGoError("Invalid field index".into()))?;
-            let text = texts.get(ti)
+            let txt = texts.get(ti)
                 .ok_or_else(|| TantivyGoError("Invalid text index".into()))?;
-            let f = schema.get_field(field_name)
-                .ok_or_else(|| TantivyGoError("Invalid field name".into()))?;
-            Ok((f, text.as_str()))
+            let f = schema.get_field(f_name)
+                .map_err(|_e| TantivyGoError("Invalid field name".into()))?;
+            Ok((f, txt.as_str()))
         };
 
-        // Helper to call extract_terms and drop if zero‐terms error:
+        // Wrap extract_terms: drop zero-term errors
         let mut get_terms = |f, txt| -> Result<Vec<(usize, tantivy::Term)>, TantivyGoError> {
             match extract_terms(index, f, txt) {
-                Ok(terms) => Ok(terms),
-                Err(ref e) if e.0.contains("Zero terms were extracted") => {
-                    return Ok(Vec::new())
-                }
-                Err(e) => return Err(e),
+                Ok(v) => Ok(v),
+                Err(ref e) if e.0.contains("Zero terms were extracted") => Ok(Vec::new()),
+                Err(e) => Err(e),
             }
         };
 
         if let Some(go_q) = &element.query {
-            let ret = match go_q {
+            let built = match go_q {
                 GoQuery::PhraseQuery { field_index, text_index, boost } => {
                     let (f, txt) = get_field_and_text(*field_index, *text_index)?;
                     let terms = get_terms(f, txt)?;
@@ -72,93 +70,88 @@ pub fn convert_to_tantivy(
                     };
                     Some(try_boost(occur, *boost, q))
                 }
-
                 GoQuery::PhrasePrefixQuery { field_index, text_index, boost } => {
                     let (f, txt) = get_field_and_text(*field_index, *text_index)?;
                     let terms = get_terms(f, txt)?;
-                    if terms.is_empty() {
-                        return Ok(None);
-                    }
-                    let q = Box::new(PhrasePrefixQuery::new_with_offset(terms));
-                    Some(try_boost(occur, *boost, q))
+                    if terms.is_empty() { return Ok(None); }
+                    Some(try_boost(occur, *boost, Box::new(PhrasePrefixQuery::new_with_offset(terms))))
                 }
-
                 GoQuery::TermQuery { field_index, text_index, boost } => {
                     let (f, txt) = get_field_and_text(*field_index, *text_index)?;
                     let terms = get_terms(f, txt)?;
-                    if terms.is_empty() {
-                        return Ok(None);
-                    }
-                    let q = Box::new(TermQuery::new(
-                        terms[0].1.clone(),
-                        IndexRecordOption::WithFreqs,
-                    ));
-                    Some(try_boost(occur, *boost, q))
+                    if terms.is_empty() { return Ok(None); }
+                    Some(try_boost(occur, *boost, Box::new(TermQuery::new(
+                        terms[0].1.clone(), IndexRecordOption::WithFreqs,
+                    ))))
                 }
-
                 GoQuery::TermPrefixQuery { field_index, text_index, boost } => {
                     let (f, txt) = get_field_and_text(*field_index, *text_index)?;
                     let terms = get_terms(f, txt)?;
-                    if terms.is_empty() {
-                        return Ok(None);
-                    }
-                    let q = Box::new(PhrasePrefixQuery::new(vec![terms[0].1.clone()]));
-                    Some(try_boost(occur, *boost, q))
+                    if terms.is_empty() { return Ok(None); }
+                    Some(try_boost(occur, *boost,
+                        Box::new(PhrasePrefixQuery::new(vec![terms[0].1.clone()]))))
                 }
-
                 GoQuery::EveryTermQuery { field_index, text_index, boost } => {
                     let (f, txt) = get_field_and_text(*field_index, *text_index)?;
                     let terms = get_terms(f, txt)?;
-                    if terms.is_empty() {
-                        return Ok(None);
-                    }
-                    let mut sub = Vec::with_capacity(terms.len());
+                    if terms.is_empty() { return Ok(None); }
+                    let mut subs = Vec::new();
                     for (_pos, term) in terms {
-                        sub.push(try_boost(Must, 1.0, Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))));
+                        subs.push(try_boost(Must, 1.0,
+                            Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))));
                     }
-                    Some(try_boost(occur, *boost, Box::new(BooleanQuery::new(sub))))
+                    Some(try_boost(occur, *boost, Box::new(BooleanQuery::new(subs))))
                 }
-
                 GoQuery::OneOfTermQuery { field_index, text_index, boost } => {
                     let (f, txt) = get_field_and_text(*field_index, *text_index)?;
                     let terms = get_terms(f, txt)?;
-                    if terms.is_empty() {
-                        return Ok(None);
-                    }
-                    let mut sub = Vec::with_capacity(terms.len());
+                    if terms.is_empty() { return Ok(None); }
+                    let mut subs = Vec::new();
                     let len = terms.len() as f32;
                     for (i, (_pos, term)) in terms.into_iter().enumerate() {
-                        let w = 1.0 - 0.5 * ((i + 1) as f32 / len);
-                        sub.push(try_boost(Should, w, Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))));
+                        let weight = 1.0 - 0.5 * ((i + 1) as f32 / len);
+                        subs.push(try_boost(Should, weight,
+                            Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))));
                     }
-                    Some(try_boost(occur, *boost, Box::new(BooleanQuery::new(sub))))
+                    Some(try_boost(occur, *boost, Box::new(BooleanQuery::new(subs))))
                 }
-
                 GoQuery::BoolQuery { subqueries, boost } => {
-                    let mut child_qs = Vec::new();
+                    let mut child = Vec::new();
                     for sq in subqueries {
                         if let Some(q) = element_to_query(index, sq, schema, texts, fields)? {
-                            child_qs.push(q);
+                            child.push(q);
                         }
                     }
-                    if child_qs.is_empty() {
-                        return Ok(None);
-                    }
-                    Some(try_boost(occur, *boost, Box::new(BooleanQuery::new(child_qs))))
+                    if child.is_empty() { return Ok(None); }
+                    Some(try_boost(occur, *boost, Box::new(BooleanQuery::new(child))))
                 }
             };
-
-            // unwrap the Option<Query> into Result<Option<…>>
-            return Ok(ret);
+            return Ok(built);
         }
 
-fn modifier_to_occur(modifier: &QueryModifier) -> Occur {
-    match modifier {
-        QueryModifier::Must => Occur::Must,
-        QueryModifier::Should => Occur::Should,
-        QueryModifier::MustNot => Occur::MustNot,
-        Err(TantivyGoError("Query is None in QueryElement".to_string()))
+        Err(TantivyGoError("Query is None in QueryElement".into()))
     }
+
+    // wrap boost
+    fn try_boost(occur: Occur, boost: f32, q: Box<dyn Query>) -> (Occur, Box<dyn Query>) {
+        if (boost - 1.0).abs() < std::f32::EPSILON {
+            (occur, q)
+        } else {
+            (occur, Box::new(BoostQuery::new(q, boost as Score)))
+        }
+    }
+
+    // === Top-level ===
+    let mut top = Vec::new();
+    for elem in &parsed.query.subqueries {
+        if let Some(q) = element_to_query(index, elem, schema, &parsed.texts, &parsed.fields)? {
+            top.push(q);
+        }
+    }
+    if top.is_empty() {
+        return Err(TantivyGoError("No usable clauses in query".into()));
+    }
+    Ok(Box::new(BooleanQuery::from(top)))
 }
 
 pub fn parse_query_from_json(
@@ -324,12 +317,6 @@ mod tests {
                     },
                 ]),
             },
-    // helper to wrap boost
-    fn try_boost(occur: Occur, boost: f32, q: Box<dyn Query>) -> (Occur, Box<dyn Query>) {
-        if (boost - 1.0).abs() < std::f32::EPSILON {
-            (occur, q)
-        } else {
-            (occur, Box::new(BoostQuery::new(q, boost as Score)))
         }
     }
 
@@ -342,6 +329,48 @@ mod tests {
         let parsed: FinalQuery = serde_json::from_str(&contents).expect("Json was not parsed");
 
         assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn test_convert_drops_empty_text_clause() {
+        // Build schema with one field using "simple" tokenizer
+        let mut schema_b = Schema::builder();
+        let mut opts = TEXT | STORED;
+        opts = opts.set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("simple")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        );
+        let f1 = schema_b.add_text_field("f1", opts.clone());
+        let f2 = schema_b.add_text_field("f2", opts);
+        let schema = schema_b.build();
+
+        // Create index and register tokenizer
+        let index = Index::create_in_ram(schema.clone());
+        index.tokenizers().register(
+            "simple",
+            TextAnalyzer::builder(SimpleTokenizer::default()).build(),
+        );
+
+        // Construct FinalQuery with two clauses: one empty, one "hello"
+        let fq = FinalQuery {
+            texts: vec!["".into(), "hello".into()],
+            fields: vec!["f1".into(), "f2".into()],
+            query: GoBool { subqueries: vec![
+                GoElem { query: Some(GoQuery::PhraseQuery { field_index: 0, text_index: 0, boost: 1.0 }), modifier: QueryModifier::Must },
+                GoElem { query: Some(GoQuery::PhraseQuery { field_index: 1, text_index: 1, boost: 1.0 }), modifier: QueryModifier::Must },
+            ]},
+        };
+
+        // Convert: should succeed and drop the first (empty) clause
+        let q = convert_to_tantivy(&index, fq, &schema).expect("conversion failed");
+        let dq = q.as_any().downcast_ref::<BooleanQuery>()
+            .expect("expected BooleanQuery");
+        let subs = dq.clauses();
+        assert_eq!(subs.len(), 1);
+        // the remaining clause must target "hello"
+        let debug = format!("{:?}", dq);
+        assert!(debug.contains("hello"));
     }
 
     #[test]
@@ -491,50 +520,6 @@ mod tests {
         assert_eq!(format!("{parsed:#?}"), format!("{expected:#?}"));
     }
 
-    // new test: one clause yields zero terms and is dropped
-    #[test]
-    fn test_convert_drops_empty_text_clause() {
-        // Build schema with one field using "simple" tokenizer
-        let mut schema_b = Schema::builder();
-        let mut opts = TEXT | STORED;
-        opts = opts.set_indexing_options(
-            TextFieldIndexing::default()
-                .set_tokenizer("simple")
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-        );
-        let f1 = schema_b.add_text_field("f1", opts.clone());
-        let f2 = schema_b.add_text_field("f2", opts);
-        let schema = schema_b.build();
-
-        // Create index and register tokenizer
-        let index = Index::create_in_ram(schema.clone());
-        index.tokenizers().register(
-            "simple",
-            TextAnalyzer::builder(SimpleTokenizer::default()).build(),
-        );
-
-        // Construct FinalQuery with two clauses: one empty, one "hello"
-        let fq = FinalQuery {
-            texts: vec!["".into(), "hello".into()],
-            fields: vec!["f1".into(), "f2".into()],
-            query: GoBool { subqueries: vec![
-                GoElem { query: Some(GoQuery::PhraseQuery { field_index: 0, text_index: 0, boost: 1.0 }), modifier: QueryModifier::Must },
-                GoElem { query: Some(GoQuery::PhraseQuery { field_index: 1, text_index: 1, boost: 1.0 }), modifier: QueryModifier::Must },
-            ]},
-        };
-
-        // Convert: should succeed and drop the first (empty) clause
-        let q = convert_to_tantivy(&index, fq, &schema).expect("conversion failed");
-        let dq = q.as_any().downcast_ref::<BooleanQuery>()
-            .expect("expected BooleanQuery");
-        let subs = dq.clauses();
-        assert_eq!(subs.len(), 1);
-        // the remaining clause must target "hello"
-        let debug = format!("{:?}", dq);
-        assert!(debug.contains("hello"));
-    }
-    // === Top-level assembly ===
-
     fn make_terms(field: Field, words: Vec<&str>) -> Vec<Term> {
         words
             .into_iter()
@@ -548,19 +533,9 @@ mod tests {
 
     fn phrase_prefix_query(field: Field, words: Vec<&str>) -> Box<TPhrasePrefixQuery> {
         Box::new(TPhrasePrefixQuery::new(make_terms(field, words)))
-    let mut top_subs = Vec::new();
-    for elem in &parsed.query.subqueries {
-        if let Some(q) = element_to_query(index, elem, schema, &parsed.texts, &parsed.fields)? {
-            top_subs.push(q);
-        }
     }
 
     fn boost_query(query: Box<dyn Query>, boost: f32) -> Box<BoostQuery> {
         Box::new(BoostQuery::new(query, boost))
-    if top_subs.is_empty() {
-        return Err(TantivyGoError("No usable clauses in query".to_string()));
     }
-}
-    let final_bool = BooleanQuery::from(top_subs);
-    Ok(Box::new(final_bool))
 }
