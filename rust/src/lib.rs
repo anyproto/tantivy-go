@@ -351,7 +351,7 @@ pub extern "C" fn context_search_json(
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[logcall]
 #[no_mangle]
-pub extern "C" fn context_free(context_ptr: *mut TantivyContext) {
+pub extern "C" fn context_free(context_ptr: *mut TantivyContext) {    
     drop_any(context_ptr)
 }
 
@@ -529,4 +529,30 @@ pub unsafe extern "C" fn init_lib(
         Ok(_) => (),
         Err(err) => set_error(&err.to_string(), error_buffer),
     }
+}
+
+#[logcall]
+#[no_mangle]
+pub extern "C" fn context_wait_and_free(context_ptr: *mut TantivyContext, error_buffer: *mut *mut c_char) {
+    if context_ptr.is_null() {
+        return;
+    }
+    
+    let result = || -> Result<(), TantivyGoError> {
+        // Get ownership of the context
+        let context = unsafe { Box::from_raw(context_ptr) };
+        
+        // Call wait_merging_threads on the writer
+        context.writer.wait_merging_threads().map_err(|err| {
+            TantivyGoError::from_err("Failed to wait for merging threads", &err.to_string())
+        })?;
+        
+        // Box drops automatically when this function ends
+        Ok(())
+    };
+
+    if let Err(err) = result() {
+        set_error(&err.to_string(), error_buffer);
+    }
+    // Don't call drop_any - we've already taken ownership with Box::from_raw
 }

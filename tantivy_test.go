@@ -2,9 +2,10 @@ package tantivy_go_test
 
 import (
 	"encoding/json"
-	"github.com/anyproto/tantivy-go/internal"
 	"os"
 	"testing"
+
+	"github.com/anyproto/tantivy-go/internal"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,10 @@ func Test(t *testing.T) {
 	t.Run("docs search and remove - when by part of body", func(t *testing.T) {
 		_, tc := fx(t, limit, minGram, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "Example Title", "Example body doing.", "1", tc)
 		require.NoError(t, err)
@@ -105,7 +109,10 @@ func Test(t *testing.T) {
 	t.Run("docs search - when ngram", func(t *testing.T) {
 		_, tc := fx(t, limit, 1, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "Douglas DC-9", "", "1", tc)
 		require.NoError(t, err)
@@ -152,7 +159,10 @@ func Test(t *testing.T) {
 	t.Run("docs search - when ngram json", func(t *testing.T) {
 		_, tc := fx(t, limit, 1, true, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "Douglas DC-9", "", "bafyreiarbtedoyhl54gspq7weophjxspexdlh2gr7cgjpl4bbqxefhb6p4.1lx08wya7kx2k", tc)
 		require.NoError(t, err)
@@ -203,7 +213,10 @@ func Test(t *testing.T) {
 	t.Run("docs remove - when by body token", func(t *testing.T) {
 		_, tc := fx(t, limit, minGram, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		// Tokens are strang, text, bodi
 		doc, err := addDoc(t, "Example title", "Strange/text/body", "1", tc)
@@ -226,7 +239,10 @@ func Test(t *testing.T) {
 	t.Run("docs remove - when by wrong body token", func(t *testing.T) {
 		_, tc := fx(t, limit, minGram, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		// Tokens are strang, text, bodi
 		doc, err := addDoc(t, "Example title", "Strange/text/body", "1", tc)
@@ -249,7 +265,10 @@ func Test(t *testing.T) {
 	t.Run("docs remove - when by proper token and wrong field length", func(t *testing.T) {
 		_, tc := fx(t, 1, minGram, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "Example title", "Body", "12", tc)
 		require.NoError(t, err)
@@ -278,7 +297,10 @@ func Test(t *testing.T) {
 			})
 		}))
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "ตัวอย่ง", "body", "1", tc)
 		require.NoError(t, err)
@@ -330,7 +352,10 @@ func Test(t *testing.T) {
 	t.Run("docs search - when ascii folding", func(t *testing.T) {
 		_, tc := fx(t, limit, 1, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "Idées fête", "mères straße", "1", tc)
 		require.NoError(t, err)
@@ -398,7 +423,10 @@ func Test(t *testing.T) {
 	t.Run("docs search and remove - when fast", func(t *testing.T) {
 		_, tc := fx(t, limit, minGram, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "some", "body", "1", tc)
 		require.NoError(t, err)
@@ -454,7 +482,10 @@ func Test(t *testing.T) {
 	t.Run("docs fix utf8 - wrong utf8 - when lenient", func(t *testing.T) {
 		_, tc := fx(t, limit, minGram, false, true)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		invalidUtf8Hello := string([]byte{0x68, 0x65, 0x6c, 0x6c, 0x6f, 0xff})
 		doc, err := addDoc(t, "some", invalidUtf8Hello, "1", tc)
@@ -502,7 +533,10 @@ func Test(t *testing.T) {
 	t.Run("docs fix utf8 - wrong utf8 - when not lenient", func(t *testing.T) {
 		_, tc := fx(t, limit, minGram, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		invalidUtf8Hello := string([]byte{0x68, 0x65, 0x6c, 0x6c, 0x6f, 0xff})
 		doc := tantivy_go.NewDocument()
@@ -518,7 +552,10 @@ func Test(t *testing.T) {
 			})
 		}))
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "Create Body", "Example title content.", "1", tc)
 		require.NoError(t, err)
@@ -578,7 +615,10 @@ func Test(t *testing.T) {
 	t.Run("docs search and remove - when title and ngram", func(t *testing.T) {
 		_, tc := fx(t, limit, minGram, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "Create Body", "Example title content.", "1", tc)
 		require.NoError(t, err)
@@ -638,7 +678,10 @@ func Test(t *testing.T) {
 	t.Run("docs search - when jieba", func(t *testing.T) {
 		_, tc := fx(t, limit, 1, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "", "张华考上了北京大学；李萍进了中等技术学校；我在百货公司当售货员：我们都有光明的前途", "1", tc)
 		require.NoError(t, err)
@@ -707,7 +750,10 @@ func Test(t *testing.T) {
 	t.Run("docs search query - when prefix", func(t *testing.T) {
 		_, tc := fx(t, limit, 1, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "", "gaszählerstand", "id1", tc)
 		require.NoError(t, err)
@@ -750,7 +796,10 @@ func Test(t *testing.T) {
 	t.Run("docs search - when weights apply", func(t *testing.T) {
 		_, tc := fx(t, limit, 1, false, false)
 
-		defer tc.Free()
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
 
 		doc, err := addDoc(t, "an apple", "", "id1", tc)
 		require.NoError(t, err)

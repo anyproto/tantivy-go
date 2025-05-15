@@ -123,3 +123,5 @@ void init_lib(const char *log_level_ptr,
               char **error_buffer,
               bool clear_on_panic,
               bool utf8_lenient);
+
+void context_wait_and_free(struct TantivyContext *context_ptr, char **error_buffer);

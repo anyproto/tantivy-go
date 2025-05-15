@@ -194,8 +194,19 @@ func (tc *TantivyContext) SearchJson(sCtx SearchContext) (*SearchResult, error) 
 	return &SearchResult{ptr: ptr}, nil
 }
 
+// Close waits till the merging operations are finished and releases all the resources held by the indexWriter
+func (tc *TantivyContext) Close() error {
+	ptr := tc.ptr
+	var errBuffer *C.char
+	C.context_wait_and_free(ptr, &errBuffer)
+	return tryExtractError(errBuffer)
+}
+
+// Deprecated: Use Close() instead.
 func (tc *TantivyContext) Free() {
-	C.context_free(tc.ptr)
+	if err := tc.Close(); err != nil {
+		fmt.Println("Failed to wait for merging threads: ", err)
+	}
 }
 
 // RegisterTextAnalyzerNgram registers a text analyzer using N-grams with the index.
