@@ -109,19 +109,19 @@ func main() {
 	}
 
 	// Add fields to document
-	err = doc.AddField(NameTitle, "Example Title", index)
+	err = doc.AddField("Example Title", index, NameTitle)
 	if err != nil {
 		fmt.Println("Failed to add field to document:", err)
 		return
 	}
 
-	err = doc.AddField(NameId, "1", index)
+	err = doc.AddField("1", index, NameId)
 	if err != nil {
 		fmt.Println("Failed to add field to document:", err)
 		return
 	}
 
-	err = doc.AddField(NameBody, "Example body content.", index)
+	err = doc.AddField("Example body content.", index, NameBody)
 	if err != nil {
 		fmt.Println("Failed to add field to document:", err)
 		return
@@ -160,7 +160,7 @@ func main() {
 			break
 		}
 		// Get JSON representation of the document
-		jsonStr, err := doc.ToJson(schema, NameId, NameTitle, NameBody)
+		jsonStr, err := doc.ToJson(index, NameId, NameTitle, NameBody)
 		if err != nil {
 			fmt.Println("Failed to get document JSON:", err)
 		} else {

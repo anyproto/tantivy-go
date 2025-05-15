@@ -14,14 +14,14 @@ typedef struct TantivyContext TantivyContext;
 
 SchemaBuilder *schema_builder_new(void);
 
-void schema_builder_add_text_field(SchemaBuilder *builder_ptr,
-                                   const char *field_name_ptr,
-                                   bool stored,
-                                   bool is_text,
-                                   bool is_fast,
-                                   uintptr_t index_record_option_const,
-                                   const char *tokenizer_name_ptr,
-                                   char **error_buffer);
+uint32_t schema_builder_add_text_field(SchemaBuilder *builder_ptr,
+                                       const char *field_name_ptr,
+                                       bool stored,
+                                       bool is_text,
+                                       bool is_fast,
+                                       uintptr_t index_record_option_const,
+                                       const char *tokenizer_name_ptr,
+                                       char **error_buffer);
 
 Schema *schema_builder_build(SchemaBuilder *builder_ptr, char **error_buffer);
 
@@ -64,7 +64,7 @@ void context_add_and_consume_documents(struct TantivyContext *context_ptr,
                                        char **error_buffer);
 
 void context_delete_documents(struct TantivyContext *context_ptr,
-                              const char *field_name_ptr,
+                              unsigned int field_id,
                               const char **delete_ids_ptr,
                               uintptr_t delete_ids_len,
                               char **error_buffer);
@@ -72,9 +72,9 @@ void context_delete_documents(struct TantivyContext *context_ptr,
 uint64_t context_num_docs(struct TantivyContext *context_ptr, char **error_buffer);
 
 struct SearchResult *context_search(struct TantivyContext *context_ptr,
-                                    const char **field_names_ptr,
+                                    unsigned int *field_ids_ptr,
                                     float *field_weights_ptr,
-                                    uintptr_t field_names_len,
+                                    uintptr_t field_ids_len,
                                     const char *query_ptr,
                                     char **error_buffer,
                                     uintptr_t docs_limit,
@@ -99,14 +99,19 @@ void search_result_free(struct SearchResult *result_ptr);
 struct Document *document_create(void);
 
 void document_add_field(struct Document *doc_ptr,
-                        const char *field_name_ptr,
+                        unsigned int field_id,
                         const char *field_value_ptr,
-                        struct TantivyContext *context_ptr,
                         char **error_buffer);
 
+void document_add_fields(struct Document *doc_ptr,
+                         unsigned int *field_ids_ptr,
+                         uintptr_t field_ids_len,
+                         const char *field_value_ptr,
+                         char **error_buffer);
+
 char *document_as_json(struct Document *doc_ptr,
-                       const char **include_fields_ptr,
-                       uintptr_t include_fields_len,
+                       unsigned int *include_field_ids_ptr,
+                       uintptr_t include_field_ids_len,
                        Schema *schema_ptr,
                        char **error_buffer);
 
