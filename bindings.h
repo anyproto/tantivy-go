@@ -14,6 +14,15 @@ typedef struct TantivyContext TantivyContext;
 
 SchemaBuilder *schema_builder_new(void);
 
+uint32_t schema_builder_add_i64_field(SchemaBuilder *builder_ptr,
+                                      const char *field_name_ptr,
+                                      bool stored,
+                                      bool is_indexed,
+                                      bool fieldnorms,
+                                      bool is_fast,
+                                      bool coerce,
+                                      char **error_buffer);
+
 uint32_t schema_builder_add_text_field(SchemaBuilder *builder_ptr,
                                        const char *field_name_ptr,
                                        bool stored,
