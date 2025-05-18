@@ -10,12 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/anyproto/tantivy-go"
+	tantivy_go "github.com/anyproto/tantivy-go"
 )
 
 const NameBody = "body"
 const NameId = "id"
 const NameTitle = "title"
+const NameAge = "age"
 const NameBodyZh = "bodyZh"
 const NameTitleZh = "titleZh"
 
@@ -935,6 +936,16 @@ func fx(
 		false,
 		tantivy_go.IndexRecordOptionWithFreqsAndPositions,
 		tantivy_go.TokenizerJieba,
+	)
+	require.NoError(t, err)
+
+	err = builder.AddI64Field(
+		NameAge,
+		true,
+		true,
+		true,
+		true,
+		true,
 	)
 	require.NoError(t, err)
 

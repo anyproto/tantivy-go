@@ -10,7 +10,7 @@ use crate::c_util::{
     search, search_json, set_error, start_lib_init,
 };
 use crate::tantivy_util::{
-    add_text_field, register_edge_ngram_tokenizer, register_jieba_tokenizer,
+    add_i64_field, add_text_field, register_edge_ngram_tokenizer, register_jieba_tokenizer,
     register_ngram_tokenizer, register_raw_tokenizer, register_simple_tokenizer, Document,
     SearchResult, TantivyContext, TantivyGoError,
 };
@@ -24,6 +24,42 @@ mod tantivy_util;
 #[no_mangle]
 pub extern "C" fn schema_builder_new() -> *mut SchemaBuilder {
     Box::into_raw(Box::new(Schema::builder()))
+}
+
+#[logcall]
+#[no_mangle]
+pub extern "C" fn schema_builder_add_i64_field(
+    builder_ptr: *mut SchemaBuilder,
+    field_name_ptr: *const c_char,
+    stored: bool,
+    is_indexed: bool,
+    fieldnorms: bool,
+    is_fast: bool,
+    coerce: bool,
+    error_buffer: *mut *mut c_char,
+) -> u32 {
+    let result = || -> Result<u32, TantivyGoError> {
+        let builder = assert_pointer(builder_ptr)?;
+        let field_name = assert_string(field_name_ptr)?;
+
+        Ok(add_i64_field(
+            stored,
+            is_indexed,
+            fieldnorms,
+            is_fast,
+            builder,
+            coerce,
+            field_name.as_str(),
+        ))
+    };
+
+    match result() {
+        Ok(val) => val,
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            0
+        }
+    }
 }
 
 #[logcall]
@@ -351,7 +387,7 @@ pub extern "C" fn context_search_json(
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[logcall]
 #[no_mangle]
-pub extern "C" fn context_free(context_ptr: *mut TantivyContext) {    
+pub extern "C" fn context_free(context_ptr: *mut TantivyContext) {
     drop_any(context_ptr)
 }
 
@@ -533,20 +569,23 @@ pub unsafe extern "C" fn init_lib(
 
 #[logcall]
 #[no_mangle]
-pub extern "C" fn context_wait_and_free(context_ptr: *mut TantivyContext, error_buffer: *mut *mut c_char) {
+pub extern "C" fn context_wait_and_free(
+    context_ptr: *mut TantivyContext,
+    error_buffer: *mut *mut c_char,
+) {
     if context_ptr.is_null() {
         return;
     }
-    
+
     let result = || -> Result<(), TantivyGoError> {
         // Get ownership of the context
         let context = unsafe { Box::from_raw(context_ptr) };
-        
+
         // Call wait_merging_threads on the writer
         context.writer.wait_merging_threads().map_err(|err| {
             TantivyGoError::from_err("Failed to wait for merging threads", &err.to_string())
         })?;
-        
+
         // Box drops automatically when this function ends
         Ok(())
     };
