@@ -152,12 +152,12 @@ func (tc *TantivyContext) DeleteDocumentsWithOpstamp(fieldName string, deleteIds
 func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Document, deleteFieldName string, deleteIds []string) (uint64, error) {
 	tc.lock.Lock()
 	defer tc.lock.Unlock()
-	
+
 	// If both operations are empty, return early
 	if len(addDocs) == 0 && len(deleteIds) == 0 {
 		return 0, nil
 	}
-	
+
 	// Prepare add documents pointers
 	var addDocsPtr **C.Document
 	var addDocsLen C.uintptr_t
@@ -169,19 +169,19 @@ func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Docum
 		addDocsPtr = &docsPtr[0]
 		addDocsLen = C.uintptr_t(len(addDocs))
 	}
-	
+
 	// Prepare delete parameters
 	var deleteFieldId C.uint
 	var deleteIdsPtr **C.char
 	var deleteIdsLen C.uintptr_t
-	
+
 	if len(deleteIds) > 0 {
 		fieldId, contains := tc.schema.fieldNames[deleteFieldName]
 		if !contains {
 			return 0, errors.New("field not found in schema")
 		}
 		deleteFieldId = C.uint(fieldId)
-		
+
 		deleteIDsPtr := make([]*C.char, len(deleteIds))
 		for j, id := range deleteIds {
 			cID := C.CString(id)
@@ -191,7 +191,7 @@ func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Docum
 		deleteIdsPtr = (**C.char)(unsafe.Pointer(&deleteIDsPtr[0]))
 		deleteIdsLen = C.uintptr_t(len(deleteIds))
 	}
-	
+
 	// Execute batch operation
 	var errBuffer *C.char
 	opstamp := C.context_batch_add_and_delete_documents(
@@ -203,17 +203,17 @@ func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Docum
 		deleteIdsLen,
 		&errBuffer,
 	)
-	
+
 	// Free document strings after consumption
 	for _, doc := range addDocs {
 		doc.FreeStrings()
 	}
-	
+
 	if errBuffer != nil {
 		defer C.string_free(errBuffer)
 		return 0, errors.New(C.GoString(errBuffer))
 	}
-	
+
 	return uint64(opstamp), nil
 }
 

@@ -17,12 +17,12 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 	// Create schema
 	builder, err := NewSchemaBuilder()
 	require.NoError(t, err)
-	
+
 	err = builder.AddTextField("id", true, false, false, IndexRecordOptionBasic, "simple")
 	require.NoError(t, err)
 	err = builder.AddTextField("body", true, true, false, IndexRecordOptionWithFreqsAndPositions, "simple")
 	require.NoError(t, err)
-	
+
 	schema, err := builder.BuildSchema()
 	require.NoError(t, err)
 
@@ -30,7 +30,7 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 	index, err := NewTantivyContextWithSchema(indexPath, schema)
 	require.NoError(t, err)
 	defer index.Free()
-	
+
 	// Register tokenizer
 	err = index.RegisterTextAnalyzerSimple("simple", 100, English)
 	require.NoError(t, err)
@@ -42,19 +42,19 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 		require.NoError(t, err)
 		err = doc1.AddField("first document", index, "body")
 		require.NoError(t, err)
-		
+
 		doc2 := NewDocument()
 		err = doc2.AddField("2", index, "id")
 		require.NoError(t, err)
 		err = doc2.AddField("second document", index, "body")
 		require.NoError(t, err)
-		
+
 		docs := []*Document{doc1, doc2}
-		
+
 		opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(docs, "", nil)
 		require.NoError(t, err)
 		require.Greater(t, opstamp, uint64(0))
-		
+
 		numDocs, err := index.NumDocs()
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), numDocs)
@@ -63,11 +63,11 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 	// Test 2: Delete documents only
 	t.Run("Delete documents only", func(t *testing.T) {
 		deleteIds := []string{"1"}
-		
+
 		opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(nil, "id", deleteIds)
 		require.NoError(t, err)
 		require.Greater(t, opstamp, uint64(0))
-		
+
 		numDocs, err := index.NumDocs()
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), numDocs)
@@ -81,24 +81,24 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 		require.NoError(t, err)
 		err = doc3.AddField("third document", index, "body")
 		require.NoError(t, err)
-		
+
 		doc4 := NewDocument()
 		err = doc4.AddField("4", index, "id")
 		require.NoError(t, err)
 		err = doc4.AddField("fourth document", index, "body")
 		require.NoError(t, err)
-		
+
 		addDocs := []*Document{doc3, doc4}
 		deleteIds := []string{"2"}
-		
+
 		opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(addDocs, "id", deleteIds)
 		require.NoError(t, err)
 		require.Greater(t, opstamp, uint64(0))
-		
+
 		numDocs, err := index.NumDocs()
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), numDocs) // Should have docs 3 and 4
-		
+
 		// Verify correct documents remain
 		sCtx := NewSearchContextBuilder().
 			SetQuery("third OR fourth").
@@ -108,7 +108,7 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 		results, err := index.Search(sCtx)
 		require.NoError(t, err)
 		defer results.Free()
-		
+
 		size, err := results.GetSize()
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), uint64(size))
@@ -124,7 +124,7 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 	// Test 5: Invalid delete field
 	t.Run("Invalid delete field", func(t *testing.T) {
 		deleteIds := []string{"some_id"}
-		
+
 		_, err := index.BatchAddAndDeleteDocumentsWithOpstamp(nil, "nonexistent_field", deleteIds)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "field not found in schema")
@@ -140,12 +140,12 @@ func TestBatchOperationPerformance(t *testing.T) {
 	// Create schema
 	builder, err := NewSchemaBuilder()
 	require.NoError(t, err)
-	
+
 	err = builder.AddTextField("id", true, false, false, IndexRecordOptionBasic, "simple")
 	require.NoError(t, err)
 	err = builder.AddTextField("body", true, true, false, IndexRecordOptionWithFreqsAndPositions, "simple")
 	require.NoError(t, err)
-	
+
 	schema, err := builder.BuildSchema()
 	require.NoError(t, err)
 
@@ -153,7 +153,7 @@ func TestBatchOperationPerformance(t *testing.T) {
 	index, err := NewTantivyContextWithSchema(indexPath, schema)
 	require.NoError(t, err)
 	defer index.Free()
-	
+
 	// Register tokenizer
 	err = index.RegisterTextAnalyzerSimple("simple", 100, English)
 	require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestBatchOperationPerformance(t *testing.T) {
 		require.NoError(t, err)
 		addDocs[i] = doc
 	}
-	
+
 	deleteIds := make([]string, numDocs/2)
 	for i := 0; i < numDocs/2; i++ {
 		deleteIds[i] = fmt.Sprintf("doc_%d", i*2) // Delete every even document
@@ -179,15 +179,14 @@ func TestBatchOperationPerformance(t *testing.T) {
 	opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(addDocs, "id", deleteIds)
 	require.NoError(t, err)
 	require.Greater(t, opstamp, uint64(0))
-	
+
 	// Verify final document count
 	// We're adding 100 new documents and deleting 50 that don't exist yet,
 	// so we should have all 100 documents
 	numDocsAfter, err := index.NumDocs()
 	require.NoError(t, err)
 	require.Equal(t, uint64(numDocs), numDocsAfter)
-	
-	t.Logf("Successfully performed batch operation: added %d docs, deleted %d docs in single commit", 
+
+	t.Logf("Successfully performed batch operation: added %d docs, deleted %d docs in single commit",
 		numDocs, len(deleteIds))
 }
-
