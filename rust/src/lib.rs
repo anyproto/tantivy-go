@@ -3,6 +3,7 @@ use std::ffi::{c_uint, CString};
 use std::os::raw::{c_char, c_float};
 use std::ptr;
 use tantivy::schema::*;
+use tantivy::Opstamp;
 
 use crate::c_util::{
     add_and_consume_documents, add_field, add_fields, assert_pointer, assert_str, assert_string,
@@ -237,15 +238,19 @@ pub extern "C" fn context_add_and_consume_documents(
     docs_ptr: *mut *mut Document,
     docs_len: usize,
     error_buffer: *mut *mut c_char,
-) {
-    let result = || -> Result<(), TantivyGoError> {
+) -> u64 {
+    let result = || -> Result<u64, TantivyGoError> {
         let context = assert_pointer(context_ptr)?;
-        add_and_consume_documents(docs_ptr, docs_len, &mut context.writer)?;
-        Ok(())
+        let opstamp = add_and_consume_documents(docs_ptr, docs_len, &mut context.writer)?;
+        Ok(opstamp)
     };
 
-    if let Err(err) = result() {
-        set_error(&err.to_string(), error_buffer);
+    match result() {
+        Ok(opstamp) => opstamp,
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            0
+        }
     }
 }
 
@@ -257,15 +262,18 @@ pub extern "C" fn context_delete_documents(
     delete_ids_ptr: *mut *const c_char,
     delete_ids_len: usize,
     error_buffer: *mut *mut c_char,
-) {
-    let result = || -> Result<(), TantivyGoError> {
+) -> u64 {
+    let result = || -> Result<Opstamp, TantivyGoError> {
         let context = assert_pointer(context_ptr)?;
-        delete_docs(delete_ids_ptr, delete_ids_len, context, field_id)?;
-        Ok(())
+        delete_docs(delete_ids_ptr, delete_ids_len, context, field_id)
     };
 
-    if let Err(err) = result() {
-        set_error(&err.to_string(), error_buffer);
+    match result() {
+        Ok(opstamp) => opstamp,
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            0
+        }
     }
 }
 
@@ -277,7 +285,8 @@ pub extern "C" fn context_num_docs(
 ) -> u64 {
     let result = || -> Result<u64, TantivyGoError> {
         let context = assert_pointer(context_ptr)?;
-        Ok(context.reader().searcher().num_docs())
+        let reader = context.reader();
+        Ok(reader.searcher().num_docs())
     };
 
     match result() {
@@ -555,4 +564,75 @@ pub extern "C" fn context_wait_and_free(context_ptr: *mut TantivyContext, error_
         set_error(&err.to_string(), error_buffer);
     }
     // Don't call drop_any - we've already taken ownership with Box::from_raw
+}
+
+#[logcall]
+#[no_mangle]
+pub extern "C" fn context_commit_opstamp(context_ptr: *mut TantivyContext) -> u64 {
+    let result = || -> Result<u64, TantivyGoError> {
+        let context = assert_pointer(context_ptr)?;
+        Ok(context.writer.commit_opstamp())
+    };
+
+    match result() {
+        Ok(opstamp) => opstamp,
+        Err(_) => 0,
+    }
+}
+
+#[logcall]
+#[no_mangle]
+pub extern "C" fn context_reload_reader(
+    context_ptr: *mut TantivyContext,
+    error_buffer: *mut *mut c_char,
+) {
+    let result = || -> Result<(), TantivyGoError> {
+        let context = assert_pointer(context_ptr)?;
+        // Force a reload by actually calling the reader method
+        let _reader = context.reader();
+        Ok(())
+    };
+
+    match result() {
+        Ok(_) => {},
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+        }
+    }
+}
+
+#[logcall]
+#[no_mangle]
+pub extern "C" fn context_garbage_collect_files(
+    context_ptr: *mut TantivyContext,
+    error_buffer: *mut *mut c_char,
+) -> u64 {
+    let result = || -> Result<u64, TantivyGoError> {
+        let context = assert_pointer(context_ptr)?;
+        
+        // Get living files by checking searchable segments
+        let mut living_files = std::collections::HashSet::new();
+        if let Ok(segment_metas) = context.index.searchable_segment_metas() {
+            for segment_meta in segment_metas {
+                for file in segment_meta.list_files() {
+                    living_files.insert(file);
+                }
+            }
+        }
+        
+        // Get mutable reference to directory and perform garbage collection
+        let directory = context.index.directory_mut();
+        match directory.garbage_collect(|| living_files.clone()) {
+            Ok(gc_result) => Ok(gc_result.deleted_files.len() as u64),
+            Err(err) => Err(TantivyGoError::from_err("Garbage collection failed", &err.to_string())),
+        }
+    };
+
+    match result() {
+        Ok(deleted_count) => deleted_count,
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            0
+        }
+    }
 }

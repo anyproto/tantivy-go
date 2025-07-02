@@ -16,7 +16,7 @@ use std::{fs, panic, slice};
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{Query, QueryParser};
 use tantivy::schema::{Field, Schema};
-use tantivy::{Index, IndexWriter, Opstamp, Score, TantivyDocument, TantivyError, Term};
+use tantivy::{Index, IndexWriter, Opstamp, ReloadPolicy, Score, TantivyDocument, TantivyError, Term};
 
 pub fn set_error(err: &str, error_buffer: *mut *mut c_char) {
     let err_str = match CString::new(err) {
@@ -194,7 +194,7 @@ fn create_tantivy_context(
 ) -> Result<TantivyContext, TantivyError> {
     let index = Index::open_or_create(dir, schema)?;
     let writer = index.writer(DOCUMENT_BUDGET_BYTES)?;
-    let reader = index.reader()?;
+    let reader = index.reader_builder().reload_policy(ReloadPolicy::Manual).try_into()?;
     Ok(TantivyContext::new(index, writer, reader))
 }
 
@@ -202,7 +202,7 @@ pub fn add_and_consume_documents(
     docs_ptr: *mut *mut Document,
     docs_len: usize,
     writer: &mut IndexWriter,
-) -> Result<(), TantivyGoError> {
+) -> Result<Opstamp, TantivyGoError> {
     process_type_slice(docs_ptr, docs_len, |doc| {
         let doc = *box_from(doc);
         let _ = writer.add_document(doc.tantivy_doc);
@@ -213,8 +213,8 @@ pub fn add_and_consume_documents(
         TantivyGoError(format!("Failed to add the document: {}", err))
     })?;
 
-    commit(writer, "Failed to commit the document")?;
-    Ok(())
+    let opstamp = commit(writer, "Failed to commit the document")?;
+    Ok(opstamp)
 }
 
 fn commit(writer: &mut IndexWriter, message: &str) -> Result<Opstamp, TantivyGoError> {
@@ -229,7 +229,7 @@ pub fn delete_docs<'a>(
     delete_ids_len: usize,
     context: &mut TantivyContext,
     field_id: u32,
-) -> Result<(), TantivyGoError> {
+) -> Result<Opstamp, TantivyGoError> {
     let field = Field::from_field_id(field_id);
 
     process_string_slice(delete_ids_ptr, delete_ids_len, |id_value| {
@@ -243,8 +243,8 @@ pub fn delete_docs<'a>(
         err
     })?;
 
-    commit(&mut context.writer, "Failed to commit removing")?;
-    Ok(())
+    let opstamp = commit(&mut context.writer, "Failed to commit removing")?;
+    Ok(opstamp)
 }
 
 fn rollback(writer: &mut IndexWriter) {
