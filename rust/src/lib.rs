@@ -318,7 +318,10 @@ pub extern "C" fn context_batch_add_and_delete_documents(
         
         // Finally, commit everything at once
         let opstamp = context.writer.commit().map_err(|err| {
-            let _ = context.writer.rollback();
+            // TEMPORARILY DISABLED: Tantivy has a critical bug in the rollback mechanism
+            // https://github.com/quickwit-oss/tantivy/issues/2666
+            // TODO: Re-enable when the bug is fixed
+            // let _ = context.writer.rollback();
             TantivyGoError::from_err("Failed to commit batch operation", &err.to_string())
         })?;
         Ok(opstamp)

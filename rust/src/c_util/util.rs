@@ -248,7 +248,11 @@ pub fn delete_docs<'a>(
 }
 
 fn rollback(writer: &mut IndexWriter) {
-    let _ = writer.rollback();
+    // TEMPORARILY DISABLED: Tantivy has a critical bug in the rollback mechanism
+    // https://github.com/quickwit-oss/tantivy/issues/2666
+    // TODO: Re-enable when the bug is fixed
+    // let _ = writer.rollback();
+    let _ = writer; // Suppress unused variable warning
 }
 
 pub fn get_doc<'a>(
