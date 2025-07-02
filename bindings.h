@@ -69,6 +69,14 @@ uint64_t context_delete_documents(struct TantivyContext *context_ptr,
                                   uintptr_t delete_ids_len,
                                   char **error_buffer);
 
+uint64_t context_batch_add_and_delete_documents(struct TantivyContext *context_ptr,
+                                                struct Document **add_docs_ptr,
+                                                uintptr_t add_docs_len,
+                                                unsigned int delete_field_id,
+                                                const char **delete_ids_ptr,
+                                                uintptr_t delete_ids_len,
+                                                char **error_buffer);
+
 uint64_t context_num_docs(struct TantivyContext *context_ptr, char **error_buffer);
 
 struct SearchResult *context_search(struct TantivyContext *context_ptr,

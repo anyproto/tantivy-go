@@ -137,6 +137,86 @@ func (tc *TantivyContext) DeleteDocumentsWithOpstamp(fieldName string, deleteIds
 	return uint64(opstamp), nil
 }
 
+// BatchAddAndDeleteDocumentsWithOpstamp performs batch add and delete operations within a single commit.
+// This is more efficient than calling AddAndConsumeDocumentsWithOpstamp and DeleteDocumentsWithOpstamp
+// separately as it only commits once, reducing I/O overhead.
+//
+// Parameters:
+//   - addDocs: Documents to add to the index.
+//   - deleteFieldName: The field name to match against for deletion.
+//   - deleteIds: Document IDs to delete from the index.
+//
+// Returns:
+//   - uint64: The opstamp from the commit operation. Returns 0 if both addDocs and deleteIds are empty.
+//   - error: An error if the batch operation fails.
+func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Document, deleteFieldName string, deleteIds []string) (uint64, error) {
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
+	
+	// If both operations are empty, return early
+	if len(addDocs) == 0 && len(deleteIds) == 0 {
+		return 0, nil
+	}
+	
+	// Prepare add documents pointers
+	var addDocsPtr **C.Document
+	var addDocsLen C.uintptr_t
+	if len(addDocs) > 0 {
+		docsPtr := make([]*C.Document, len(addDocs))
+		for j, doc := range addDocs {
+			docsPtr[j] = doc.ptr
+		}
+		addDocsPtr = &docsPtr[0]
+		addDocsLen = C.uintptr_t(len(addDocs))
+	}
+	
+	// Prepare delete parameters
+	var deleteFieldId C.uint
+	var deleteIdsPtr **C.char
+	var deleteIdsLen C.uintptr_t
+	
+	if len(deleteIds) > 0 {
+		fieldId, contains := tc.schema.fieldNames[deleteFieldName]
+		if !contains {
+			return 0, errors.New("field not found in schema")
+		}
+		deleteFieldId = C.uint(fieldId)
+		
+		deleteIDsPtr := make([]*C.char, len(deleteIds))
+		for j, id := range deleteIds {
+			cID := C.CString(id)
+			defer C.free(unsafe.Pointer(cID))
+			deleteIDsPtr[j] = cID
+		}
+		deleteIdsPtr = (**C.char)(unsafe.Pointer(&deleteIDsPtr[0]))
+		deleteIdsLen = C.uintptr_t(len(deleteIds))
+	}
+	
+	// Execute batch operation
+	var errBuffer *C.char
+	opstamp := C.context_batch_add_and_delete_documents(
+		tc.ptr,
+		addDocsPtr,
+		addDocsLen,
+		deleteFieldId,
+		deleteIdsPtr,
+		deleteIdsLen,
+		&errBuffer,
+	)
+	
+	// Free document strings after consumption
+	for _, doc := range addDocs {
+		doc.FreeStrings()
+	}
+	
+	if errBuffer != nil {
+		defer C.string_free(errBuffer)
+		return 0, errors.New(C.GoString(errBuffer))
+	}
+	
+	return uint64(opstamp), nil
+}
+
 // NumDocs returns the number of documents in the index.
 //
 // Returns:
