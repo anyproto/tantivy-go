@@ -45,7 +45,7 @@ pub fn convert_to_tantivy(
         };
 
         // Wrap extract_terms: handle zero-term errors differently for Must vs Should/MustNot
-        let mut get_terms = |f, txt| -> Result<Vec<(usize, tantivy::Term)>, TantivyGoError> {
+        let get_terms = |f, txt| -> Result<Vec<(usize, tantivy::Term)>, TantivyGoError> {
             match extract_terms(index, f, txt) {
                 Ok(v) => Ok(v),
                 Err(ref e) if e.0.contains("Zero terms were extracted") => Ok(Vec::new()),
