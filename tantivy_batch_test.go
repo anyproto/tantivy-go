@@ -62,9 +62,9 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 
 	// Test 2: Delete documents only
 	t.Run("Delete documents only", func(t *testing.T) {
-		deleteIds := []string{"1"}
+		deleteFieldValues := []string{"1"}
 
-		opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(nil, "id", deleteIds)
+		opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(nil, "id", deleteFieldValues)
 		require.NoError(t, err)
 		require.Greater(t, opstamp, uint64(0))
 
@@ -89,9 +89,9 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 		require.NoError(t, err)
 
 		addDocs := []*Document{doc3, doc4}
-		deleteIds := []string{"2"}
+		deleteFieldValues := []string{"2"}
 
-		opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(addDocs, "id", deleteIds)
+		opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(addDocs, "id", deleteFieldValues)
 		require.NoError(t, err)
 		require.Greater(t, opstamp, uint64(0))
 
@@ -123,9 +123,9 @@ func TestBatchAddAndDeleteDocuments(t *testing.T) {
 
 	// Test 5: Invalid delete field
 	t.Run("Invalid delete field", func(t *testing.T) {
-		deleteIds := []string{"some_id"}
+		deleteFieldValues := []string{"some_id"}
 
-		_, err := index.BatchAddAndDeleteDocumentsWithOpstamp(nil, "nonexistent_field", deleteIds)
+		_, err := index.BatchAddAndDeleteDocumentsWithOpstamp(nil, "nonexistent_field", deleteFieldValues)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "field not found in schema")
 	})
@@ -170,13 +170,13 @@ func TestBatchOperationPerformance(t *testing.T) {
 		addDocs[i] = doc
 	}
 
-	deleteIds := make([]string, numDocs/2)
+	deleteFieldValues := make([]string, numDocs/2)
 	for i := 0; i < numDocs/2; i++ {
-		deleteIds[i] = fmt.Sprintf("doc_%d", i*2) // Delete every even document
+		deleteFieldValues[i] = fmt.Sprintf("doc_%d", i*2) // Delete every even document
 	}
 
 	// Test batch operation
-	opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(addDocs, "id", deleteIds)
+	opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp(addDocs, "id", deleteFieldValues)
 	require.NoError(t, err)
 	require.Greater(t, opstamp, uint64(0))
 
@@ -188,5 +188,137 @@ func TestBatchOperationPerformance(t *testing.T) {
 	require.Equal(t, uint64(numDocs), numDocsAfter)
 
 	t.Logf("Successfully performed batch operation: added %d docs, deleted %d docs in single commit",
-		numDocs, len(deleteIds))
+		numDocs, len(deleteFieldValues))
+}
+
+// TestBatchDeleteAndAddSameID tests the important case of deleting and adding the same ID in a single batch
+// This is a common pattern for updating documents
+func TestBatchDeleteAndAddSameID(t *testing.T) {
+	tempDir := t.TempDir()
+	indexPath := filepath.Join(tempDir, "test-batch-update")
+	defer os.RemoveAll(indexPath)
+
+	// Create simple schema
+	builder, err := NewSchemaBuilder()
+	require.NoError(t, err)
+
+	err = builder.AddTextField("id", true, false, false, IndexRecordOptionBasic, "raw")
+	require.NoError(t, err)
+	err = builder.AddTextField("content", true, true, false, IndexRecordOptionWithFreqsAndPositions, "simple")
+	require.NoError(t, err)
+
+	schema, err := builder.BuildSchema()
+	require.NoError(t, err)
+
+	// Create index
+	index, err := NewTantivyContextWithSchema(indexPath, schema)
+	require.NoError(t, err)
+	defer index.Free()
+
+	// Register tokenizers
+	err = index.RegisterTextAnalyzerSimple("simple", 100, English)
+	require.NoError(t, err)
+	err = index.RegisterTextAnalyzerRaw("raw")
+	require.NoError(t, err)
+
+	// Add initial document
+	t.Run("Setup initial document", func(t *testing.T) {
+		doc := NewDocument()
+		err = doc.AddField("doc1", index, "id")
+		require.NoError(t, err)
+		err = doc.AddField("Initial content", index, "content")
+		require.NoError(t, err)
+
+		_, err = index.AddAndConsumeDocumentsWithOpstamp(doc)
+		require.NoError(t, err)
+
+		count, err := index.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), count)
+	})
+
+	// Test delete and add same ID in one batch (update pattern)
+	t.Run("Delete and add same ID in batch", func(t *testing.T) {
+		// Create new document with same ID but different content
+		doc := NewDocument()
+		err = doc.AddField("doc1", index, "id")
+		require.NoError(t, err)
+		err = doc.AddField("Updated content", index, "content")
+		require.NoError(t, err)
+
+		// Delete and add in same batch
+		deleteFieldValues := []string{"doc1"}
+		opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp([]*Document{doc}, "id", deleteFieldValues)
+		require.NoError(t, err)
+		require.Greater(t, opstamp, uint64(0))
+
+		// Check document count - should still be 1
+		count, err := index.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), count, "Should still have 1 document after update")
+
+		// Verify content was updated
+		sCtx := NewSearchContextBuilder().
+			SetQuery("doc1").
+			AddFieldDefaultWeight("id").
+			SetDocsLimit(1).
+			Build()
+
+		results, err := index.Search(sCtx)
+		require.NoError(t, err)
+
+		size, err := results.GetSize()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), uint64(size), "Should find the document")
+
+		if size > 0 {
+			doc, err := results.Get(0)
+			require.NoError(t, err)
+
+			jsonStr, err := doc.ToJson(index, "id", "content")
+			require.NoError(t, err)
+			doc.Free()
+
+			require.Contains(t, jsonStr, "Updated content", "Content should be updated")
+		}
+		results.Free()
+	})
+
+	// Test multiple updates in sequence
+	t.Run("Multiple updates in sequence", func(t *testing.T) {
+		// Update the document 3 times
+		contents := []string{"First update", "Second update", "Third update"}
+
+		for i, content := range contents {
+			doc := NewDocument()
+			err = doc.AddField("doc1", index, "id")
+			require.NoError(t, err)
+			err = doc.AddField(content, index, "content")
+			require.NoError(t, err)
+
+			deleteFieldValues := []string{"doc1"}
+			opstamp, err := index.BatchAddAndDeleteDocumentsWithOpstamp([]*Document{doc}, "id", deleteFieldValues)
+			require.NoError(t, err)
+			require.Greater(t, opstamp, uint64(0), "Update %d should return valid opstamp", i+1)
+		}
+
+		// Verify final state
+		count, err := index.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), count, "Should still have exactly 1 document")
+
+		// Check final content
+		sCtx := NewSearchContextBuilder().
+			SetQuery("\"Third update\"").
+			AddFieldDefaultWeight("content").
+			SetDocsLimit(1).
+			Build()
+
+		results, err := index.Search(sCtx)
+		require.NoError(t, err)
+		size, err := results.GetSize()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), uint64(size), "Should find document with final content")
+		results.Free()
+	})
 }

@@ -141,20 +141,24 @@ func (tc *TantivyContext) DeleteDocumentsWithOpstamp(fieldName string, deleteIds
 // This is more efficient than calling AddAndConsumeDocumentsWithOpstamp and DeleteDocumentsWithOpstamp
 // separately as it only commits once, reducing I/O overhead.
 //
+// Important: To update an existing document, you must include its field value in deleteFieldValues.
+// Otherwise, the new document will be added without removing the old one, creating duplicates.
+// The delete operation happens first, then the add operation.
+//
 // Parameters:
 //   - addDocs: Documents to add to the index.
 //   - deleteFieldName: The field name to match against for deletion.
-//   - deleteIds: Document IDs to delete from the index.
+//   - deleteFieldValues: Field values to delete from the index (documents where deleteFieldName matches these values).
 //
 // Returns:
-//   - uint64: The opstamp from the commit operation. Returns 0 if both addDocs and deleteIds are empty.
+//   - uint64: The opstamp from the commit operation. Returns 0 if both addDocs and deleteFieldValues are empty.
 //   - error: An error if the batch operation fails.
-func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Document, deleteFieldName string, deleteIds []string) (uint64, error) {
+func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Document, deleteFieldName string, deleteFieldValues []string) (uint64, error) {
 	tc.lock.Lock()
 	defer tc.lock.Unlock()
 
 	// If both operations are empty, return early
-	if len(addDocs) == 0 && len(deleteIds) == 0 {
+	if len(addDocs) == 0 && len(deleteFieldValues) == 0 {
 		return 0, nil
 	}
 
@@ -172,24 +176,24 @@ func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Docum
 
 	// Prepare delete parameters
 	var deleteFieldId C.uint
-	var deleteIdsPtr **C.char
-	var deleteIdsLen C.uintptr_t
+	var deleteValuesPtr **C.char
+	var deleteValuesLen C.uintptr_t
 
-	if len(deleteIds) > 0 {
+	if len(deleteFieldValues) > 0 {
 		fieldId, contains := tc.schema.fieldNames[deleteFieldName]
 		if !contains {
 			return 0, errors.New("field not found in schema")
 		}
 		deleteFieldId = C.uint(fieldId)
 
-		deleteIDsPtr := make([]*C.char, len(deleteIds))
-		for j, id := range deleteIds {
-			cID := C.CString(id)
-			defer C.free(unsafe.Pointer(cID))
-			deleteIDsPtr[j] = cID
+		deleteValuesCPtr := make([]*C.char, len(deleteFieldValues))
+		for j, value := range deleteFieldValues {
+			cValue := C.CString(value)
+			defer C.free(unsafe.Pointer(cValue))
+			deleteValuesCPtr[j] = cValue
 		}
-		deleteIdsPtr = (**C.char)(unsafe.Pointer(&deleteIDsPtr[0]))
-		deleteIdsLen = C.uintptr_t(len(deleteIds))
+		deleteValuesPtr = (**C.char)(unsafe.Pointer(&deleteValuesCPtr[0]))
+		deleteValuesLen = C.uintptr_t(len(deleteFieldValues))
 	}
 
 	// Execute batch operation
@@ -199,8 +203,8 @@ func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Docum
 		addDocsPtr,
 		addDocsLen,
 		deleteFieldId,
-		deleteIdsPtr,
-		deleteIdsLen,
+		deleteValuesPtr,
+		deleteValuesLen,
 		&errBuffer,
 	)
 

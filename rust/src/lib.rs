@@ -291,7 +291,19 @@ pub extern "C" fn context_batch_add_and_delete_documents(
     let result = || -> Result<Opstamp, TantivyGoError> {
         let context = assert_pointer(context_ptr)?;
         
-        // First, add all documents (without committing)
+        // First, delete documents (without committing)
+        if delete_ids_len > 0 {
+            let field = Field::from_field_id(delete_field_id);
+            let slice = unsafe { std::slice::from_raw_parts(delete_ids_ptr, delete_ids_len) };
+            for &id_ptr in slice {
+                let id_value = assert_str(id_ptr)?;
+                context
+                    .writer
+                    .delete_term(Term::from_field_text(field, &id_value));
+            }
+        }
+        
+        // Then, add all documents (without committing)
         if add_docs_len > 0 {
             let slice = unsafe { std::slice::from_raw_parts(add_docs_ptr, add_docs_len) };
             for &doc_ptr in slice {
@@ -301,18 +313,6 @@ pub extern "C" fn context_batch_add_and_delete_documents(
                 let doc = unsafe { Box::from_raw(doc_ptr) };
                 let _ = context.writer.add_document(doc.tantivy_doc);
                 // Doc is consumed, Box automatically drops the rest
-            }
-        }
-        
-        // Then, delete documents (without committing)
-        if delete_ids_len > 0 {
-            let field = Field::from_field_id(delete_field_id);
-            let slice = unsafe { std::slice::from_raw_parts(delete_ids_ptr, delete_ids_len) };
-            for &id_ptr in slice {
-                let id_value = assert_str(id_ptr)?;
-                context
-                    .writer
-                    .delete_term(Term::from_field_text(field, &id_value));
             }
         }
         
