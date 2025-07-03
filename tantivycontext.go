@@ -60,11 +60,11 @@ func (tc *TantivyContext) AddAndConsumeDocuments(docs ...*Document) error {
 //   - uint64: The opstamp from the commit operation. Returns 0 if no documents are provided.
 //   - error: An error if adding and consuming the documents fails.
 func (tc *TantivyContext) AddAndConsumeDocumentsWithOpstamp(docs ...*Document) (uint64, error) {
-	tc.lock.Lock()
-	defer tc.lock.Unlock()
 	if len(docs) == 0 {
 		return 0, nil
 	}
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 	var errBuffer *C.char
 	docsPtr := make([]*C.Document, len(docs))
 	for j, doc := range docs {
@@ -109,11 +109,11 @@ func (tc *TantivyContext) DeleteDocuments(fieldName string, deleteIds ...string)
 //   - uint64: The opstamp from the delete operation. Returns 0 if no IDs are provided.
 //   - error: An error if deleting the documents fails.
 func (tc *TantivyContext) DeleteDocumentsWithOpstamp(fieldName string, deleteIds ...string) (uint64, error) {
-	tc.lock.Lock()
-	defer tc.lock.Unlock()
 	if len(deleteIds) == 0 {
 		return 0, nil
 	}
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 	fieldId, contains := tc.schema.fieldNames[fieldName]
 	if !contains {
 		return 0, errors.New("field not found in schema")
@@ -154,13 +154,13 @@ func (tc *TantivyContext) DeleteDocumentsWithOpstamp(fieldName string, deleteIds
 //   - uint64: The opstamp from the commit operation. Returns 0 if both addDocs and deleteFieldValues are empty.
 //   - error: An error if the batch operation fails.
 func (tc *TantivyContext) BatchAddAndDeleteDocumentsWithOpstamp(addDocs []*Document, deleteFieldName string, deleteFieldValues []string) (uint64, error) {
-	tc.lock.Lock()
-	defer tc.lock.Unlock()
-
-	// If both operations are empty, return early
+	// If both operations are empty, return early without acquiring lock
 	if len(addDocs) == 0 && len(deleteFieldValues) == 0 {
 		return 0, nil
 	}
+
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 
 	// Prepare add documents pointers
 	var addDocsPtr **C.Document
