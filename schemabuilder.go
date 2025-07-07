@@ -114,6 +114,35 @@ func (b *SchemaBuilder) AddTextField(
 	return tryExtractError(errBuffer)
 }
 
+func (b *SchemaBuilder) AddI64Field(
+	name string,
+	stored bool,
+	isIndexed bool,
+	fieldnorms bool,
+	isFast bool,
+	coerce bool,
+) error {
+	if _, contains := b.fieldNames[name]; contains {
+		return errors.New("field already defined: " + name)
+	}
+	b.fieldNames[name] = -1
+	cName := C.CString(name)
+	defer C.string_free(cName)
+	var errBuffer *C.char
+	fieldId := C.schema_builder_add_i64_field(
+		b.ptr,
+		cName,
+		C._Bool(stored),
+		C._Bool(isIndexed),
+		C._Bool(fieldnorms),
+		C._Bool(isFast),
+		C._Bool(coerce),
+		&errBuffer,
+	)
+	b.fieldNames[name] = int(fieldId)
+	return tryExtractError(errBuffer)
+}
+
 // BuildSchema finalizes the schema building process and returns the resulting Schema.
 // Returns a pointer to the Schema and an error if the schema could not be built.
 func (b *SchemaBuilder) BuildSchema() (*Schema, error) {
