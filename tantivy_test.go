@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/anyproto/tantivy-go"
+	tantivy_go "github.com/anyproto/tantivy-go"
 )
 
 const NameBody = "body"

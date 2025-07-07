@@ -58,16 +58,24 @@ void context_register_text_analyzer_raw(struct TantivyContext *context_ptr,
                                         const char *tokenizer_name_ptr,
                                         char **error_buffer);
 
-void context_add_and_consume_documents(struct TantivyContext *context_ptr,
-                                       struct Document **docs_ptr,
-                                       uintptr_t docs_len,
-                                       char **error_buffer);
+uint64_t context_add_and_consume_documents(struct TantivyContext *context_ptr,
+                                           struct Document **docs_ptr,
+                                           uintptr_t docs_len,
+                                           char **error_buffer);
 
-void context_delete_documents(struct TantivyContext *context_ptr,
-                              unsigned int field_id,
-                              const char **delete_ids_ptr,
-                              uintptr_t delete_ids_len,
-                              char **error_buffer);
+uint64_t context_delete_documents(struct TantivyContext *context_ptr,
+                                  unsigned int field_id,
+                                  const char **delete_ids_ptr,
+                                  uintptr_t delete_ids_len,
+                                  char **error_buffer);
+
+uint64_t context_batch_add_and_delete_documents(struct TantivyContext *context_ptr,
+                                                struct Document **add_docs_ptr,
+                                                uintptr_t add_docs_len,
+                                                unsigned int delete_field_id,
+                                                const char **delete_ids_ptr,
+                                                uintptr_t delete_ids_len,
+                                                char **error_buffer);
 
 uint64_t context_num_docs(struct TantivyContext *context_ptr, char **error_buffer);
 
@@ -125,3 +133,9 @@ void init_lib(const char *log_level_ptr,
               bool utf8_lenient);
 
 void context_wait_and_free(struct TantivyContext *context_ptr, char **error_buffer);
+
+uint64_t context_commit_opstamp(struct TantivyContext *context_ptr);
+
+void context_reload_reader(struct TantivyContext *context_ptr, char **error_buffer);
+
+uint64_t context_garbage_collect_files(struct TantivyContext *context_ptr, char **error_buffer);
