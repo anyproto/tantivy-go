@@ -14,7 +14,9 @@ pub fn extract_text_from_owned_value<'a>(
     if let ReferenceValueLeaf::Str(text) = value {
         Ok(Cow::Borrowed(text))
     } else {
-        Err(TantivyGoError("Only OwnedValue::Str is supported".to_string()))
+        Err(TantivyGoError(
+            "Only OwnedValue::Str is supported".to_string(),
+        ))
     }
 }
 
@@ -23,10 +25,9 @@ pub fn extract_terms(
     field: Field,
     query: &str,
 ) -> Result<Vec<(usize, Term)>, TantivyGoError> {
-    let mut tokenizer = match index.tokenizer_for_field(field) {
-        Ok(tokenizer) => tokenizer,
-        Err(err) => return Err(TantivyGoError::from_err("", &err.to_string())),
-    };
+    let mut tokenizer = index.tokenizer_for_field(field).map_err(|err| {
+        TantivyGoError::from_err("Failed to init tokenizer for field", &err.to_string())
+    })?;
     let mut token_stream = tokenizer.token_stream(query);
     let mut terms = Vec::new();
     token_stream.process(&mut |token: &Token| {
@@ -35,7 +36,10 @@ pub fn extract_terms(
     if terms.len() > 0 {
         Ok(terms)
     } else {
-        Err(TantivyGoError("Zero terms were extracted".to_string()))
+        let q_len = query.len();
+        Err(TantivyGoError(format!(
+            "Zero terms were extracted for a query.len() = {q_len}"
+        )))
     }
 }
 
