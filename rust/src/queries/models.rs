@@ -9,7 +9,8 @@ pub enum QueryType {
     TermPrefixQuery,
     TermQuery,
     EveryTermQuery,
-    OneOfTermQuery
+    OneOfTermQuery,
+    AllQuery,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -55,6 +56,9 @@ pub enum GoQuery {
     OneOfTermQuery {
         field_index: usize,
         text_index: usize,
+        boost: f32,
+    },
+    AllQuery {
         boost: f32,
     },
 }

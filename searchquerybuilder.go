@@ -10,6 +10,7 @@ const (
 	TermQuery
 	EveryTermQuery
 	OneOfTermQuery
+	AllQuery
 )
 
 type QueryModifier int
@@ -121,6 +122,15 @@ func (qb *QueryBuilder) BooleanQuery(modifier QueryModifier, subBuilder *QueryBu
 	return qb
 }
 
+func (qb *QueryBuilder) AllQuery(modifier QueryModifier, boost float64) *QueryBuilder {
+	qb.subqueries = append(qb.subqueries, QueryElement{
+		Query:     &AllQueryStruct{Boost: boost},
+		Modifier:  modifier,
+		QueryType: AllQuery,
+	})
+	return qb
+}
+
 func (qb *QueryBuilder) Build() FinalQuery {
 	return FinalQuery{
 		Texts:  qb.store.textList,
@@ -138,3 +148,9 @@ type Query interface {
 func (fq *FieldQuery) IsQuery() {}
 
 func (bq *BooleanQuery) IsQuery() {}
+
+type AllQueryStruct struct {
+	Boost float64 `json:"boost"`
+}
+
+func (aq *AllQueryStruct) IsQuery() {}

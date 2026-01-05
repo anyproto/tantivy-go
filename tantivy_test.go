@@ -852,6 +852,135 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		require.JSONEq(t, `{"highlights":[],"id":"id2","score":49.19108963012695}`, jsonStr2)
 	})
+
+	t.Run("docs search - when AllQuery", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, false, false)
+
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
+
+		doc1, err := addDoc(t, "first", "body one", "id1", tc)
+		require.NoError(t, err)
+
+		doc2, err := addDoc(t, "second", "body two", "id2", tc)
+		require.NoError(t, err)
+
+		doc3, err := addDoc(t, "third", "body three", "id3", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc1, doc2, doc3)
+		require.NoError(t, err)
+
+		docs, err := tc.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(3), docs)
+
+		// Test AllQuery alone - should return all documents
+		finalQuery := tantivy_go.NewQueryBuilder().
+			AllQuery(tantivy_go.Must, 1.0).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&finalQuery).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			Build()
+
+		result, err := tc.SearchJson(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		defer result.Free()
+		require.Equal(t, 3, int(size))
+	})
+
+	t.Run("docs search - when AllQuery with MustNot", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, false, false)
+
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
+
+		doc1, err := addDoc(t, "apple", "fruit", "id1", tc)
+		require.NoError(t, err)
+
+		doc2, err := addDoc(t, "banana", "fruit", "id2", tc)
+		require.NoError(t, err)
+
+		doc3, err := addDoc(t, "carrot", "vegetable", "id3", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc1, doc2, doc3)
+		require.NoError(t, err)
+
+		// Test AllQuery with MustNot - should return all docs except those matching "fruit"
+		finalQuery := tantivy_go.NewQueryBuilder().
+			AllQuery(tantivy_go.Must, 1.0).
+			Query(tantivy_go.MustNot, NameBody, "fruit", tantivy_go.TermQuery, 1.0).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&finalQuery).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			Build()
+
+		result, err := tc.SearchJson(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		defer result.Free()
+		require.Equal(t, 1, int(size))
+
+		resDoc, err := result.Get(0)
+		require.NoError(t, err)
+		jsonStr, err := resDoc.ToJson(tc, NameId)
+		require.NoError(t, err)
+		require.Contains(t, jsonStr, `"id":"id3"`)
+	})
+
+	t.Run("docs search - when AllQuery with boost", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, false, false)
+
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
+
+		doc, err := addDoc(t, "test", "content", "id1", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		// Test AllQuery with boost
+		finalQuery := tantivy_go.NewQueryBuilder().
+			AllQuery(tantivy_go.Must, 2.5).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&finalQuery).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			Build()
+
+		result, err := tc.SearchJson(sCtx)
+		require.NoError(t, err)
+
+		size, err := result.GetSize()
+		defer result.Free()
+		require.Equal(t, 1, int(size))
+
+		resDoc, err := result.Get(0)
+		require.NoError(t, err)
+		jsonStr, err := resDoc.ToJson(tc, NameId)
+		require.NoError(t, err)
+		// Score should be boosted (2.5 * 1.0 = 2.5)
+		require.Contains(t, jsonStr, `"score":2.5`)
+	})
 }
 
 func addDoc(

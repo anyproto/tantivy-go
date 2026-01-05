@@ -2,17 +2,27 @@ use crate::queries::{FinalQuery, GoQuery, QueryElement, QueryModifier};
 use crate::tantivy_util::{extract_terms, TantivyGoError};
 use tantivy::query::Occur::{Must, Should};
 use tantivy::query::{
-    BooleanQuery, BoostQuery, Occur, PhrasePrefixQuery, PhraseQuery, Query, TermQuery,
+    AllQuery as TAllQuery, BooleanQuery, BoostQuery, Occur, PhrasePrefixQuery, PhraseQuery, Query,
+    TermQuery,
 };
 use tantivy::schema::{IndexRecordOption, Schema};
 use tantivy::{Index, Score};
+
+fn contains_all_query(subqueries: &[QueryElement]) -> bool {
+    subqueries.iter().any(|elem| match &elem.query {
+        Some(GoQuery::AllQuery { .. }) => true,
+        Some(GoQuery::BoolQuery { subqueries, .. }) => contains_all_query(subqueries),
+        _ => false,
+    })
+}
 
 pub fn convert_to_tantivy(
     index: &Index,
     parsed: FinalQuery,
     schema: &Schema,
 ) -> Result<Box<dyn Query>, TantivyGoError> {
-    if parsed.fields.is_empty() || parsed.texts.is_empty() {
+    let has_all_query = contains_all_query(&parsed.query.subqueries);
+    if !has_all_query && (parsed.fields.is_empty() || parsed.texts.is_empty()) {
         return Err(TantivyGoError(
             "Fields or texts cannot be empty".to_string(),
         ));
@@ -169,6 +179,9 @@ pub fn convert_to_tantivy(
                         }
                         Some(try_boost(occur, *boost, Box::new(BooleanQuery::new(subs))))
                     }
+                }
+                GoQuery::AllQuery { boost } => {
+                    Some(try_boost(occur, *boost, Box::new(TAllQuery)))
                 }
                 GoQuery::BoolQuery { subqueries, boost } => {
                     let mut child = Vec::new();

@@ -14,6 +14,7 @@ impl QueryType {
             4 => Some(QueryType::TermQuery),
             5 => Some(QueryType::EveryTermQuery),
             6 => Some(QueryType::OneOfTermQuery),
+            7 => Some(QueryType::AllQuery),
             _ => None,
         }
     }
@@ -189,6 +190,14 @@ impl<'de> Deserialize<'de> for QueryElement {
                     },
                     _ => return Err(de::Error::custom("Unknown query type")),
                 })
+            }
+            QueryType::AllQuery => {
+                let query_data = extract_query_data::<D>(&map)?;
+                let boost = query_data
+                    .get("boost")
+                    .and_then(|v| v.as_f64().map(|f| f as f32))
+                    .unwrap_or(1.0);
+                Some(GoQuery::AllQuery { boost })
             }
         };
 
