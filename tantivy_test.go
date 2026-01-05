@@ -981,6 +981,89 @@ func Test(t *testing.T) {
 		// Score should be boosted (2.5 * 1.0 = 2.5)
 		require.Contains(t, jsonStr, `"score":2.5`)
 	})
+
+	t.Run("docs search fast field - returns only fast field values without loading full documents", func(t *testing.T) {
+		// Use isFastId=true to enable fast field on Id
+		_, tc := fx(t, limit, 1, true, false)
+
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
+
+		// Add multiple documents
+		doc1, err := addDoc(t, "First Title", "body one", "id1", tc)
+		require.NoError(t, err)
+		doc2, err := addDoc(t, "Second Title", "body two", "id2", tc)
+		require.NoError(t, err)
+		doc3, err := addDoc(t, "Third Title", "body three", "id3", tc)
+		require.NoError(t, err)
+
+		err = tc.AddAndConsumeDocuments(doc1, doc2, doc3)
+		require.NoError(t, err)
+
+		docs, err := tc.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(3), docs)
+
+		// Search using SearchFastField - should return only id values without loading full docs
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("title").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+
+		result, err := tc.SearchFastField(sCtx, NameId)
+		require.NoError(t, err)
+
+		// Should have 3 results
+		require.Equal(t, 3, len(result.Values))
+		require.Equal(t, 3, len(result.Scores))
+
+		// All IDs should be present (order may vary based on scoring)
+		ids := make(map[string]bool)
+		for _, id := range result.Values {
+			ids[id] = true
+		}
+		require.True(t, ids["id1"], "id1 should be in results")
+		require.True(t, ids["id2"], "id2 should be in results")
+		require.True(t, ids["id3"], "id3 should be in results")
+
+		// Scores should be positive
+		for _, score := range result.Scores {
+			require.Greater(t, score, float32(0))
+		}
+	})
+
+	t.Run("docs search fast field - empty results", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, true, false)
+
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
+
+		doc, err := addDoc(t, "Test Title", "test body", "id1", tc)
+		require.NoError(t, err)
+		err = tc.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		// Search for something that doesn't exist
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("nonexistent").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+
+		result, err := tc.SearchFastField(sCtx, NameId)
+		require.NoError(t, err)
+
+		// Should have 0 results
+		require.Equal(t, 0, len(result.Values))
+		require.Equal(t, 0, len(result.Scores))
+	})
 }
 
 func addDoc(

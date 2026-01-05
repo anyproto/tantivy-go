@@ -8,7 +8,7 @@ use tantivy::{Opstamp, Term};
 use crate::c_util::{
     add_and_consume_documents, add_field, add_fields, assert_pointer, assert_str, assert_string,
     box_from, convert_document_as_json, create_context_with_schema, delete_docs, drop_any, get_doc,
-    search, search_json, set_error, start_lib_init,
+    search, search_fast_field, search_json, set_error, start_lib_init,
 };
 use crate::tantivy_util::{
     add_text_field, register_edge_ngram_tokenizer, register_jieba_tokenizer,
@@ -412,6 +412,92 @@ pub extern "C" fn context_search_json(
         Err(err) => {
             set_error(&err.to_string(), error_buffer);
             ptr::null_mut()
+        }
+    }
+}
+
+/// Performs a search and returns only fast field values (no full document loading).
+/// Returns the number of results found. Results are written to pre-allocated output arrays.
+#[logcall]
+#[no_mangle]
+pub extern "C" fn context_search_fast_field(
+    context_ptr: *mut TantivyContext,
+    field_ids_ptr: *mut c_uint,
+    field_weights_ptr: *mut c_float,
+    field_ids_len: usize,
+    query_ptr: *const c_char,
+    fast_field_id: c_uint,
+    docs_limit: usize,
+    out_scores_ptr: *mut c_float,
+    out_values_ptr: *mut *mut c_char,
+    error_buffer: *mut *mut c_char,
+) -> usize {
+    let result = || -> Result<usize, TantivyGoError> {
+        let context = assert_pointer(context_ptr)?;
+
+        if out_scores_ptr.is_null() || out_values_ptr.is_null() {
+            return Err(TantivyGoError("Output pointers are null".to_string()));
+        }
+
+        let (scores, values) = search_fast_field(
+            field_ids_ptr,
+            field_weights_ptr,
+            field_ids_len,
+            query_ptr,
+            fast_field_id,
+            docs_limit,
+            context,
+        )?;
+
+        let count = scores.len();
+        if count == 0 {
+            return Ok(0);
+        }
+
+        let out_scores = unsafe { std::slice::from_raw_parts_mut(out_scores_ptr, count) };
+        for (i, score) in scores.into_iter().enumerate() {
+            out_scores[i] = score;
+        }
+
+        let out_values = unsafe { std::slice::from_raw_parts_mut(out_values_ptr, count) };
+        for (i, value) in values.into_iter().enumerate() {
+            match value {
+                Some(s) => match CString::new(s) {
+                    Ok(cstr) => out_values[i] = cstr.into_raw(),
+                    Err(_) => out_values[i] = ptr::null_mut(),
+                },
+                None => out_values[i] = ptr::null_mut(),
+            }
+        }
+
+        Ok(count)
+    };
+
+    match result() {
+        Ok(count) => count,
+        Err(err) => {
+            set_error(&err.to_string(), error_buffer);
+            0
+        }
+    }
+}
+
+/// Free an array of strings returned by context_search_fast_field
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[logcall]
+#[no_mangle]
+pub extern "C" fn fast_field_values_free(values_ptr: *mut *mut c_char, count: usize) {
+    if values_ptr.is_null() || count == 0 {
+        return;
+    }
+
+    let values = unsafe { std::slice::from_raw_parts_mut(values_ptr, count) };
+    for ptr in values.iter_mut() {
+        if !ptr.is_null() {
+            unsafe {
+                drop(CString::from_raw(*ptr));
+            }
+            *ptr = ptr::null_mut();
         }
     }
 }

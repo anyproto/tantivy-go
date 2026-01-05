@@ -94,6 +94,26 @@ struct SearchResult *context_search_json(struct TantivyContext *context_ptr,
                                          uintptr_t docs_limit,
                                          bool with_highlights);
 
+/**
+ * Performs a search and returns only fast field values (no full document loading).
+ * Returns the number of results found. Results are written to pre-allocated output arrays.
+ */
+uintptr_t context_search_fast_field(struct TantivyContext *context_ptr,
+                                    unsigned int *field_ids_ptr,
+                                    float *field_weights_ptr,
+                                    uintptr_t field_ids_len,
+                                    const char *query_ptr,
+                                    unsigned int fast_field_id,
+                                    uintptr_t docs_limit,
+                                    float *out_scores_ptr,
+                                    char **out_values_ptr,
+                                    char **error_buffer);
+
+/**
+ * Free an array of strings returned by context_search_fast_field
+ */
+void fast_field_values_free(char **values_ptr, uintptr_t count);
+
 void context_free(struct TantivyContext *context_ptr);
 
 uintptr_t search_result_get_size(struct SearchResult *result_ptr, char **error_buffer);

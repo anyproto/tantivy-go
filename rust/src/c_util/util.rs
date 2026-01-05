@@ -1,7 +1,7 @@
 use crate::config;
 use crate::queries::parse_query_from_json;
 use crate::tantivy_util::{
-    convert_document_to_json, find_highlights, Document, SearchResult,
+    convert_document_to_json, find_highlights, read_fast_field_values, Document, SearchResult,
     TantivyContext, TantivyGoError, DOCUMENT_BUDGET_BYTES,
 };
 use log::debug;
@@ -389,6 +389,63 @@ pub fn search_json(
         context,
         with_highlights,
     )
+}
+
+/// Performs a search and returns only fast field values (no full document loading).
+pub fn search_fast_field(
+    field_ids: *mut c_uint,
+    field_weights_ptr: *mut c_float,
+    field_ids_len: usize,
+    query_ptr: *const c_char,
+    fast_field_id: c_uint,
+    docs_limit: usize,
+    context: &mut TantivyContext,
+) -> Result<(Vec<f32>, Vec<Option<String>>), TantivyGoError> {
+    let mut fields = Vec::with_capacity(field_ids_len);
+    process_slice(field_ids, field_ids_len, |_, field_id| {
+        fields.push(Field::from_field_id(field_id));
+        Ok(())
+    })?;
+
+    let mut weights = HashMap::with_capacity(field_ids_len);
+    process_slice(field_weights_ptr, field_ids_len, |i, field_weight| {
+        weights.insert(fields[i], field_weight);
+        Ok(())
+    })?;
+
+    let query_str = assert_string(query_ptr)?;
+
+    let searcher = context.reader().searcher();
+    let schema = context.index.schema();
+    let fast_field = Field::from_field_id(fast_field_id);
+
+    let mut query_parser = QueryParser::for_index(&context.index, fields);
+    for (field, weight) in weights {
+        query_parser.set_field_boost(field, weight as Score);
+    }
+    let query = query_parser
+        .parse_query(&query_str)
+        .map_err(|e| TantivyGoError(e.to_string()))?;
+
+    let top_docs = searcher
+        .search(&query, &tantivy::collector::TopDocs::with_limit(docs_limit))
+        .map_err(|err| TantivyGoError::from_err("Search err", &err.to_string()))?;
+
+    if top_docs.is_empty() {
+        return Ok((vec![], vec![]));
+    }
+
+    let mut scores = Vec::with_capacity(top_docs.len());
+    let mut doc_addresses = Vec::with_capacity(top_docs.len());
+
+    for (score, doc_address) in top_docs {
+        scores.push(score);
+        doc_addresses.push(doc_address);
+    }
+
+    let values = read_fast_field_values(&searcher, &schema, fast_field, &doc_addresses)?;
+
+    Ok((scores, values))
 }
 
 pub fn drop_any<T>(ptr: *mut T) {

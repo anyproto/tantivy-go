@@ -6,6 +6,7 @@ mod highlights;
 mod util;
 mod scheme_builder;
 mod document;
+mod fast_field;
 
 pub use self::edge_ngram_tokenizer::EdgeNgramTokenizer;
 pub use self::models::Document;
@@ -25,3 +26,4 @@ pub use self::util::extract_text_from_owned_value;
 pub use self::util::extract_terms;
 pub use self::util::TantivyGoError;
 pub use self::util::DOCUMENT_BUDGET_BYTES;
+pub use self::fast_field::read_fast_field_values;
