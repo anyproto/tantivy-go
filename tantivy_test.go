@@ -1064,6 +1064,122 @@ func Test(t *testing.T) {
 		require.Equal(t, 0, len(result.Values))
 		require.Equal(t, 0, len(result.Scores))
 	})
+
+	t.Run("docs search fast field - error when docsLimit not set", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, true, false)
+
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
+
+		doc, err := addDoc(t, "Test Title", "test body", "id1", tc)
+		require.NoError(t, err)
+		err = tc.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		// Build context WITHOUT setting docsLimit (defaults to 0)
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("title").
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+
+		result, err := tc.SearchFastField(sCtx, NameId)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Equal(t, "docsLimit must be greater than 0", err.Error())
+	})
+
+	t.Run("docs search fast field json - error when docsLimit not set", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, true, false)
+
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
+
+		doc, err := addDoc(t, "Test Title", "test body", "id1", tc)
+		require.NoError(t, err)
+		err = tc.AddAndConsumeDocuments(doc)
+		require.NoError(t, err)
+
+		// Build context with AllQuery but WITHOUT setting docsLimit (defaults to 0)
+		finalQuery := tantivy_go.NewQueryBuilder().
+			AllQuery(tantivy_go.Must, 1.0).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&finalQuery).
+			SetWithHighlights(false).
+			Build()
+
+		result, err := tc.SearchFastFieldJson(sCtx, NameId)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Equal(t, "docsLimit must be greater than 0", err.Error())
+	})
+
+	t.Run("docs search fast field json - AllQuery with empty index", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, true, false)
+
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
+
+		// Do NOT add any documents - index is empty
+
+		docs, err := tc.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), docs)
+
+		// Test AllQuery on empty index with fast field
+		finalQuery := tantivy_go.NewQueryBuilder().
+			AllQuery(tantivy_go.Must, 1.0).
+			Build()
+
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQueryFromJson(&finalQuery).
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			Build()
+
+		result, err := tc.SearchFastFieldJson(sCtx, NameId)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, 0, len(result.Values))
+		require.Equal(t, 0, len(result.Scores))
+	})
+
+	t.Run("docs search fast field - SearchFastField with empty index", func(t *testing.T) {
+		_, tc := fx(t, limit, 1, true, false)
+
+		defer func() {
+			err := tc.Close()
+			require.NoError(t, err)
+		}()
+
+		// Do NOT add any documents - index is empty
+
+		docs, err := tc.NumDocs()
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), docs)
+
+		// Test regular search on empty index with fast field
+		sCtx := tantivy_go.NewSearchContextBuilder().
+			SetQuery("anything").
+			SetDocsLimit(100).
+			SetWithHighlights(false).
+			AddFieldDefaultWeight(NameTitle).
+			Build()
+
+		result, err := tc.SearchFastField(sCtx, NameId)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, 0, len(result.Values))
+		require.Equal(t, 0, len(result.Scores))
+	})
 }
 
 func addDoc(

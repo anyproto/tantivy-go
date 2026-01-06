@@ -12,6 +12,7 @@ pub use self::util::delete_docs;
 pub use self::util::create_context_with_schema;
 pub use self::util::search;
 pub use self::util::search_fast_field;
+pub use self::util::search_fast_field_json;
 pub use self::util::search_json;
 pub use self::util::drop_any;
 pub use self::util::get_doc;
