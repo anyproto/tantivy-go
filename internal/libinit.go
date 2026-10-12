@@ -2,7 +2,10 @@ package internal
 
 //#include "../bindings.h"
 import "C"
-import "fmt"
+import (
+	"fmt"
+	"unsafe"
+)
 
 // LibInit for tests init
 func LibInit(cleanOnPanic, utf8Lenient bool, directive ...string) error {
@@ -14,7 +17,7 @@ func LibInit(cleanOnPanic, utf8Lenient bool, directive ...string) error {
 	}
 
 	cInitVal := C.CString(initVal)
-	defer C.string_free(cInitVal)
+	defer C.free(unsafe.Pointer(cInitVal))
 	cCleanOnPanic := C.bool(cleanOnPanic)
 	cUtf8Lenient := C.bool(utf8Lenient)
 	var errBuffer *C.char

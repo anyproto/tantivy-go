@@ -37,7 +37,7 @@ func (d *Document) AddField(fieldValue string, tc *TantivyContext, fieldName str
 		return errors.New("field not found in schema")
 	}
 	cFieldValue := C.CString(fieldValue)
-	d.toFree = append(d.toFree, func() { C.string_free(cFieldValue) })
+	d.toFree = append(d.toFree, func() { C.free(unsafe.Pointer(cFieldValue)) })
 	var errBuffer *C.char
 	C.document_add_field(d.ptr, C.uint(fieldId), cFieldValue, &errBuffer)
 
@@ -61,7 +61,7 @@ func (d *Document) AddFields(fieldValue string, tc *TantivyContext, fieldNames .
 	}
 
 	cFieldValue := C.CString(fieldValue)
-	d.toFree = append(d.toFree, func() { C.string_free(cFieldValue) })
+	d.toFree = append(d.toFree, func() { C.free(unsafe.Pointer(cFieldValue)) })
 	var errBuffer *C.char
 	C.document_add_fields(d.ptr, (*C.uint)(unsafe.Pointer(&includeFieldsPtr[0])), C.uintptr_t(len(includeFieldsPtr)), cFieldValue, &errBuffer)
 

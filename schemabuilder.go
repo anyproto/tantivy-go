@@ -4,6 +4,7 @@ package tantivy_go
 import "C"
 import (
 	"errors"
+	"unsafe"
 )
 
 type (
@@ -97,8 +98,8 @@ func (b *SchemaBuilder) AddTextField(
 	b.fieldNames[name] = -1
 	cName := C.CString(name)
 	cTokenizer := C.CString(tokenizer)
-	defer C.string_free(cName)
-	defer C.string_free(cTokenizer)
+	defer C.free(unsafe.Pointer(cName))
+	defer C.free(unsafe.Pointer(cTokenizer))
 	var errBuffer *C.char
 	fieldId := C.schema_builder_add_text_field(
 		b.ptr,

@@ -33,7 +33,7 @@ func (tc *TantivyContext) SearchFastField(sCtx SearchContext, fastFieldName stri
 	}
 
 	cQuery := C.CString(sCtx.GetQuery())
-	defer C.string_free(cQuery)
+	defer C.free(unsafe.Pointer(cQuery))
 
 	fieldNamesPtr, err := tc.extractFields(fieldNames)
 	if err != nil {
@@ -111,7 +111,7 @@ func (tc *TantivyContext) SearchFastFieldJson(sCtx SearchContext, fastFieldName 
 	}
 
 	cQuery := C.CString(sCtx.GetQuery())
-	defer C.string_free(cQuery)
+	defer C.free(unsafe.Pointer(cQuery))
 
 	outScores := make([]C.float, docsLimit)
 	outValues := make([]*C.char, docsLimit)

@@ -26,7 +26,7 @@ type TantivyContext struct {
 //   - error: An error if the index creation fails.
 func NewTantivyContextWithSchema(path string, schema *Schema) (*TantivyContext, error) {
 	cPath := C.CString(path)
-	defer C.string_free(cPath)
+	defer C.free(unsafe.Pointer(cPath))
 	var errBuffer *C.char
 	ptr := C.context_create_with_schema(cPath, schema.ptr, &errBuffer)
 	if ptr == nil {
@@ -251,7 +251,7 @@ func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
 		return nil, fmt.Errorf("fieldNames must not be empty")
 	}
 	cQuery := C.CString(sCtx.GetQuery())
-	defer C.string_free(cQuery)
+	defer C.free(unsafe.Pointer(cQuery))
 
 	fieldNamesPtr, err := tc.extractFields(fieldNames)
 	if err != nil {
@@ -294,7 +294,7 @@ func (tc *TantivyContext) Search(sCtx SearchContext) (*SearchResult, error) {
 func (tc *TantivyContext) SearchJson(sCtx SearchContext) (*SearchResult, error) {
 	// Ensure the query is valid
 	cQuery := C.CString(sCtx.GetQuery())
-	defer C.string_free(cQuery)
+	defer C.free(unsafe.Pointer(cQuery))
 
 	// Prepare the error buffer
 	var errBuffer *C.char
@@ -342,7 +342,7 @@ func (tc *TantivyContext) Free() {
 //   - error: An error if the registration fails.
 func (tc *TantivyContext) RegisterTextAnalyzerNgram(tokenizerName string, minGram, maxGram uintptr, prefixOnly bool) error {
 	cTokenizerName := C.CString(tokenizerName)
-	defer C.string_free(cTokenizerName)
+	defer C.free(unsafe.Pointer(cTokenizerName))
 	var errBuffer *C.char
 	C.context_register_text_analyzer_ngram(tc.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.bool(prefixOnly), &errBuffer)
 
@@ -361,7 +361,7 @@ func (tc *TantivyContext) RegisterTextAnalyzerNgram(tokenizerName string, minGra
 //   - error: An error if the registration fails.
 func (tc *TantivyContext) RegisterTextAnalyzerEdgeNgram(tokenizerName string, minGram, maxGram uintptr, limit uintptr) error {
 	cTokenizerName := C.CString(tokenizerName)
-	defer C.string_free(cTokenizerName)
+	defer C.free(unsafe.Pointer(cTokenizerName))
 	var errBuffer *C.char
 	C.context_register_text_analyzer_edge_ngram(tc.ptr, cTokenizerName, C.uintptr_t(minGram), C.uintptr_t(maxGram), C.uintptr_t(limit), &errBuffer)
 	return tryExtractError(errBuffer)
@@ -378,9 +378,9 @@ func (tc *TantivyContext) RegisterTextAnalyzerEdgeNgram(tokenizerName string, mi
 //   - error: An error if the registration fails.
 func (tc *TantivyContext) RegisterTextAnalyzerSimple(tokenizerName string, textLimit uintptr, lang Language) error {
 	cTokenizerName := C.CString(tokenizerName)
-	defer C.string_free(cTokenizerName)
+	defer C.free(unsafe.Pointer(cTokenizerName))
 	cLang := C.CString(string(lang))
-	defer C.string_free(cLang)
+	defer C.free(unsafe.Pointer(cLang))
 	var errBuffer *C.char
 	C.context_register_text_analyzer_simple(tc.ptr, cTokenizerName, C.uintptr_t(textLimit), cLang, &errBuffer)
 
@@ -397,7 +397,7 @@ func (tc *TantivyContext) RegisterTextAnalyzerSimple(tokenizerName string, textL
 //   - error: An error if the registration fails.
 func (tc *TantivyContext) RegisterTextAnalyzerJieba(tokenizerName string, textLimit uintptr) error {
 	cTokenizerName := C.CString(tokenizerName)
-	defer C.string_free(cTokenizerName)
+	defer C.free(unsafe.Pointer(cTokenizerName))
 	var errBuffer *C.char
 	C.context_register_jieba_tokenizer(tc.ptr, cTokenizerName, C.uintptr_t(textLimit), &errBuffer)
 
@@ -413,7 +413,7 @@ func (tc *TantivyContext) RegisterTextAnalyzerJieba(tokenizerName string, textLi
 //   - error: An error if the registration fails.
 func (tc *TantivyContext) RegisterTextAnalyzerRaw(tokenizerName string) error {
 	cTokenizerName := C.CString(tokenizerName)
-	defer C.string_free(cTokenizerName)
+	defer C.free(unsafe.Pointer(cTokenizerName))
 	var errBuffer *C.char
 	C.context_register_text_analyzer_raw(tc.ptr, cTokenizerName, &errBuffer)
 

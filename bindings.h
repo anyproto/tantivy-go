@@ -157,6 +157,9 @@ char *document_as_json(struct Document *doc_ptr,
 
 void document_free(struct Document *doc_ptr);
 
+/**
+ * Free a string returned by this library. Strings allocated by the caller must be freed by the caller's allocator.
+ */
 void string_free(char *s);
 
 void init_lib(const char *log_level_ptr,

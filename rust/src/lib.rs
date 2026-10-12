@@ -713,6 +713,7 @@ pub extern "C" fn document_free(doc_ptr: *mut Document) {
     drop_any(doc_ptr)
 }
 
+/// Free a string returned by this library. Strings allocated by the caller must be freed by the caller's allocator.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[logcall]
 #[no_mangle]
