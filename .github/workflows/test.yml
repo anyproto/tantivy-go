@@ -17,7 +17,10 @@ permissions:
 
 jobs:
   test:
-    runs-on: ${{ vars.RUNNER_TEST }}
+    # GitHub-hosted: the image has Xcode, rustup and the Android NDK, and the step below adds the
+    # cross compilers. rust-toolchain.toml brings the Rust targets and llvm-tools.
+    runs-on: macos-15
+    timeout-minutes: 180
     env:
       GOPRIVATE: github.com/anyproto
     steps:
@@ -25,27 +28,63 @@ jobs:
         run: git config --global url.https://${{ secrets.ANYTYPE_PAT }}@github.com/.insteadOf https://github.com/
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set up the cross toolchains
+        run: |
+          # C cross compilers for the Linux (musl) and Windows (MinGW) targets
+          brew tap messense/macos-cross-toolchains
+          brew install messense/macos-cross-toolchains/x86_64-unknown-linux-musl \
+            messense/macos-cross-toolchains/aarch64-unknown-linux-musl mingw-w64
+          # The Makefiles call the musl tools by their musl-cross names, x86_64-linux-musl-*
+          tools="$RUNNER_TEMP/cross-bin"
+          mkdir -p "$tools"
+          for t in "$(brew --prefix)"/bin/*-unknown-linux-musl-*; do
+            ln -s "$t" "$tools/$(basename "$t" | sed 's/-unknown-linux-musl-/-linux-musl-/')"
+          done
+          ls "$tools"
+          echo "$tools" >> "$GITHUB_PATH"
+          # The Android targets build with the NDK's clang. Its bin directory also holds a plain
+          # clang without the macOS SDK, so only the Rust build appends it to PATH.
+          ndk="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          bin="$ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+          if [ ! -x "$bin/armv7a-linux-androideabi26-clang" ]; then
+            echo "::error::no NDK clang in $bin"
+            exit 1
+          fi
+          echo "NDK: $ndk"
+          echo "ANDROID_NDK_BIN=$bin" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
       - name: build rust
         run: |
+          export PATH="$PATH:$ANDROID_NDK_BIN"
           cd rust
           cargo test
           make install-all
+
       - name: build go
         run: |
-          echo GOPATH=$(go env GOPATH) >> $GITHUB_ENV
-          echo GOBIN=$(go env GOPATH)/bin >> $GITHUB_ENV
-          echo $(go env GOPATH)/bin >> $GITHUB_PATH
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          mobile=$(go list -m -f '{{.Version}}' golang.org/x/mobile)
+          go install golang.org/x/mobile/cmd/gomobile@$mobile golang.org/x/mobile/cmd/gobind@$mobile
+          go version
           make build-verify
           make test
+
       - name: Create archives
         run: |
           mkdir -p .release
           for dir in libs/*/ ; do
             dir_name=$(basename "$dir")
-            tar -czf ".release/${dir_name}.tar.gz" -C "$dir" .
+            COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf ".release/${dir_name}.tar.gz" -C "$dir" .
           done
         if: github.event_name == 'push'
       - name: Release
