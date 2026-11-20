@@ -1,3 +1,33 @@
+# Go 1.26.11 and later check every cgo linker input, and a Rust staticlib fails that check:
+#  - Rust's precompiled standard library carries LLVM bitcode (the Mach-O __LLVM segment, ELF and
+#    COFF .llvmbc/.llvmcmd sections), which Go refuses as LTO sections;
+#  - on Windows, rustc writes -exclude-symbols: directives into .drectve, and Go refuses one whose
+#    symbol holds "..", as Rust's mangled names do;
+#  - also on Windows, the standard library brings split-DWARF .dwo members, and Go refuses one
+#    without sections.
+# So every installed library loses those sections and members. The machine code and the symbols stay
+# as they are. -exclude-symbols only keeps a symbol out of a DLL's automatic exports, and a .dwo
+# member defines no symbol, so a linker never pulls it out of the archive.
+#
+# llvm-objcopy and llvm-ar come from the llvm-tools component (rust-toolchain.toml), so they match
+# the LLVM rustc emits with. LLVM_OBJCOPY and LLVM_AR override them.
+LLVM_TOOLS := $(shell rustc --print sysroot)/lib/rustlib/$(shell rustc -vV | sed -n 's/^host: //p')/bin
+LLVM_OBJCOPY ?= $(LLVM_TOOLS)/llvm-objcopy
+LLVM_AR ?= $(LLVM_TOOLS)/llvm-ar
+
+define strip_lto_macho
+	@$(LLVM_OBJCOPY) --remove-section=__LLVM,__bitcode --remove-section=__LLVM,__cmdline $(1)
+endef
+
+define strip_lto_elf
+	@$(LLVM_OBJCOPY) --remove-section=.llvmbc --remove-section=.llvmcmd $(1)
+endef
+
+define strip_lto_coff
+	@$(LLVM_OBJCOPY) --remove-section=.llvmbc --remove-section=.llvmcmd --remove-section=.drectve $(1)
+	@$(LLVM_AR) d $(1) $$($(LLVM_AR) t $(1) | grep '\.dwo$$')
+endef
+
 all:
 	@set -e;
 
@@ -21,6 +51,7 @@ build-linux-amd64-musl:
 install-linux-amd64-musl: build-linux-amd64-musl
 	@mkdir -p ../libs/linux-amd64-musl
 	@cp target/x86_64-unknown-linux-musl/release/libtantivy_go.a ../libs/linux-amd64-musl
+	$(call strip_lto_elf,../libs/linux-amd64-musl/libtantivy_go.a)
 
 build-debug-linux-amd64-musl:
 	env TARGET_CC=x86_64-linux-musl-gcc cargo build --target x86_64-unknown-linux-musl
@@ -28,6 +59,7 @@ build-debug-linux-amd64-musl:
 install-debug-linux-amd64-musl: build-debug-linux-amd64-musl
 	@mkdir -p ../libs/linux-amd64-musl
 	@cp target/x86_64-unknown-linux-musl/debug/libtantivy_go.a ../libs/linux-amd64-musl
+	$(call strip_lto_elf,../libs/linux-amd64-musl/libtantivy_go.a)
 
 build-linux-arm64-musl:
 	env TARGET_CC=aarch64-linux-musl-gcc cargo build --release --target aarch64-unknown-linux-musl
@@ -35,6 +67,7 @@ build-linux-arm64-musl:
 install-linux-arm64-musl: build-linux-arm64-musl
 	@mkdir -p ../libs/linux-arm64-musl
 	@cp target/aarch64-unknown-linux-musl/release/libtantivy_go.a ../libs/linux-arm64-musl
+	$(call strip_lto_elf,../libs/linux-arm64-musl/libtantivy_go.a)
 
 build-debug-linux-arm64-musl:
 	env TARGET_CC=aarch64-linux-musl-gcc cargo build --target aarch64-unknown-linux-musl
@@ -42,6 +75,7 @@ build-debug-linux-arm64-musl:
 install-debug-linux-arm64-musl: build-debug-linux-arm64-musl
 	@mkdir -p ../libs/linux-arm64-musl
 	@cp target/aarch64-unknown-linux-musl/debug/libtantivy_go.a ../libs/linux-arm64-musl
+	$(call strip_lto_elf,../libs/linux-arm64-musl/libtantivy_go.a)
 
 build-android-arm:
 	env TARGET_CC=armv7a-linux-androideabi26-clang cargo build --release --target armv7-linux-androideabi
@@ -49,6 +83,7 @@ build-android-arm:
 install-android-arm: build-android-arm
 	@mkdir -p ../libs/android-arm
 	@cp target/armv7-linux-androideabi/release/libtantivy_go.a ../libs/android-arm
+	$(call strip_lto_elf,../libs/android-arm/libtantivy_go.a)
 
 build-debug-android-arm:
 	env TARGET_CC=armv7a-linux-androideabi26-clang cargo build --target armv7-linux-androideabi
@@ -56,6 +91,7 @@ build-debug-android-arm:
 install-debug-android-arm: build-debug-android-arm
 	@mkdir -p ../libs/android-arm
 	@cp target/armv7-linux-androideabi/debug/libtantivy_go.a ../libs/android-arm
+	$(call strip_lto_elf,../libs/android-arm/libtantivy_go.a)
 
 build-android-386:
 	env TARGET_CC=i686-linux-android26-clang cargo build --release --target i686-linux-android
@@ -63,6 +99,7 @@ build-android-386:
 install-android-386: build-android-386
 	@mkdir -p ../libs/android-386
 	@cp target/i686-linux-android/release/libtantivy_go.a ../libs/android-386
+	$(call strip_lto_elf,../libs/android-386/libtantivy_go.a)
 
 build-debug-android-386:
 	env TARGET_CC=i686-linux-android26-clang cargo build --target i686-linux-android
@@ -70,6 +107,7 @@ build-debug-android-386:
 install-debug-android-386: build-debug-android-386
 	@mkdir -p ../libs/android-386
 	@cp target/i686-linux-android/debug/libtantivy_go.a ../libs/android-386
+	$(call strip_lto_elf,../libs/android-386/libtantivy_go.a)
 
 build-android-arm64:
 	cargo build --release --target aarch64-linux-android
@@ -77,6 +115,7 @@ build-android-arm64:
 install-android-arm64: build-android-arm64
 	@mkdir -p ../libs/android-arm64
 	@cp target/aarch64-linux-android/release/libtantivy_go.a ../libs/android-arm64
+	$(call strip_lto_elf,../libs/android-arm64/libtantivy_go.a)
 
 build-debug-android-arm64:
 	cargo build --target aarch64-linux-android
@@ -84,6 +123,7 @@ build-debug-android-arm64:
 install-debug-android-arm64: build-debug-android-arm64
 	@mkdir -p ../libs/android-arm64
 	@cp target/aarch64-linux-android/debug/libtantivy_go.a ../libs/android-arm64
+	$(call strip_lto_elf,../libs/android-arm64/libtantivy_go.a)
 
 build-android-amd64:
 	cargo build --release --target x86_64-linux-android
@@ -91,6 +131,7 @@ build-android-amd64:
 install-android-amd64: build-android-amd64
 	@mkdir -p ../libs/android-amd64
 	@cp target/x86_64-linux-android/release/libtantivy_go.a ../libs/android-amd64
+	$(call strip_lto_elf,../libs/android-amd64/libtantivy_go.a)
 
 build-debug-android-amd64:
 	cargo build --target x86_64-linux-android
@@ -98,6 +139,7 @@ build-debug-android-amd64:
 install-debug-android-amd64: build-debug-android-amd64
 	@mkdir -p ../libs/android-amd64
 	@cp target/x86_64-linux-android/debug/libtantivy_go.a ../libs/android-amd64
+	$(call strip_lto_elf,../libs/android-amd64/libtantivy_go.a)
 
 build-ios-arm64:
 	RUSTFLAGS='-C opt-level=1' env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-ios
@@ -105,6 +147,7 @@ build-ios-arm64:
 install-ios-arm64: build-ios-arm64
 	@mkdir -p ../libs/ios-arm64
 	@cp target/aarch64-apple-ios/release/libtantivy_go.a ../libs/ios-arm64
+	$(call strip_lto_macho,../libs/ios-arm64/libtantivy_go.a)
 
 build-debug-ios-arm64:
 	env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --target aarch64-apple-ios
@@ -112,6 +155,7 @@ build-debug-ios-arm64:
 install-debug-ios-arm64: build-debug-ios-arm64
 	@mkdir -p ../libs/ios-arm64
 	@cp target/aarch64-apple-ios/debug/libtantivy_go.a ../libs/ios-arm64
+	$(call strip_lto_macho,../libs/ios-arm64/libtantivy_go.a)
 
 build-ios-arm64-sim:
 	RUSTFLAGS='-C opt-level=1' env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-ios-sim
@@ -119,6 +163,7 @@ build-ios-arm64-sim:
 install-ios-arm64-sim: build-ios-arm64-sim
 	@mkdir -p ../libs/ios-arm64-sim
 	@cp target/aarch64-apple-ios-sim/release/libtantivy_go.a ../libs/ios-arm64-sim
+	$(call strip_lto_macho,../libs/ios-arm64-sim/libtantivy_go.a)
 
 build-debug-ios-arm64-sim:
 	env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --target aarch64-apple-ios-sim
@@ -126,6 +171,7 @@ build-debug-ios-arm64-sim:
 install-debug-ios-arm64-sim: build-debug-ios-arm64-sim
 	@mkdir -p ../libs/ios-arm64-sim
 	@cp target/aarch64-apple-ios-sim/debug/libtantivy_go.a ../libs/ios-arm64-sim
+	$(call strip_lto_macho,../libs/ios-arm64-sim/libtantivy_go.a)
 
 build-ios-amd64:
 	RUSTFLAGS='-C opt-level=1' env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --release --target x86_64-apple-ios
@@ -133,6 +179,7 @@ build-ios-amd64:
 install-ios-amd64: build-ios-amd64
 	@mkdir -p ../libs/ios-amd64
 	@cp target/x86_64-apple-ios/release/libtantivy_go.a ../libs/ios-amd64
+	$(call strip_lto_macho,../libs/ios-amd64/libtantivy_go.a)
 
 build-debug-ios-amd64:
 	env IPHONEOS_DEPLOYMENT_TARGET=15.0 cargo build --target x86_64-apple-ios
@@ -140,6 +187,7 @@ build-debug-ios-amd64:
 install-debug-ios-amd64: build-debug-ios-amd64
 	@mkdir -p ../libs/ios-amd64
 	@cp target/x86_64-apple-ios/debug/libtantivy_go.a ../libs/ios-amd64
+	$(call strip_lto_macho,../libs/ios-amd64/libtantivy_go.a)
 
 build-darwin-amd64:
 	ENV MACOSX_DEPLOYMENT_TARGET=10.15 cargo build --release --target x86_64-apple-darwin
@@ -147,6 +195,7 @@ build-darwin-amd64:
 install-darwin-amd64: build-darwin-amd64
 	@mkdir -p ../libs/darwin-amd64
 	@cp target/x86_64-apple-darwin/release/libtantivy_go.a ../libs/darwin-amd64
+	$(call strip_lto_macho,../libs/darwin-amd64/libtantivy_go.a)
 
 build-debug-darwin-amd64:
 	ENV MACOSX_DEPLOYMENT_TARGET=10.15 cargo build --target x86_64-apple-darwin
@@ -154,6 +203,7 @@ build-debug-darwin-amd64:
 install-debug-darwin-amd64: build-debug-darwin-amd64
 	@mkdir -p ../libs/darwin-amd64
 	@cp target/x86_64-apple-darwin/debug/libtantivy_go.a ../libs/darwin-amd64
+	$(call strip_lto_macho,../libs/darwin-amd64/libtantivy_go.a)
 
 build-darwin-arm64:
 	ENV MACOSX_DEPLOYMENT_TARGET=10.15 cargo build --release --target aarch64-apple-darwin
@@ -161,6 +211,7 @@ build-darwin-arm64:
 install-darwin-arm64: build-darwin-arm64
 	@mkdir -p ../libs/darwin-arm64
 	@cp target/aarch64-apple-darwin/release/libtantivy_go.a ../libs/darwin-arm64
+	$(call strip_lto_macho,../libs/darwin-arm64/libtantivy_go.a)
 
 build-debug-darwin-arm64:
 	ENV MACOSX_DEPLOYMENT_TARGET=10.15 cargo build --target aarch64-apple-darwin
@@ -168,6 +219,7 @@ build-debug-darwin-arm64:
 install-debug-darwin-arm64: build-debug-darwin-arm64
 	@mkdir -p ../libs/darwin-arm64
 	@cp target/aarch64-apple-darwin/debug/libtantivy_go.a ../libs/darwin-arm64
+	$(call strip_lto_macho,../libs/darwin-arm64/libtantivy_go.a)
 
 build-windows-amd64:
 	cargo build --release --target x86_64-pc-windows-gnu
@@ -175,6 +227,7 @@ build-windows-amd64:
 install-windows-amd64: build-windows-amd64
 	@mkdir -p ../libs/windows-amd64
 	@cp target/x86_64-pc-windows-gnu/release/libtantivy_go.a ../libs/windows-amd64
+	$(call strip_lto_coff,../libs/windows-amd64/libtantivy_go.a)
 
 build-debug-windows-amd64:
 	cargo build --target x86_64-pc-windows-gnu
@@ -182,6 +235,7 @@ build-debug-windows-amd64:
 install-debug-windows-amd64: build-debug-windows-amd64
 	@mkdir -p ../libs/windows-amd64
 	@cp target/x86_64-pc-windows-gnu/debug/libtantivy_go.a ../libs/windows-amd64
+	$(call strip_lto_coff,../libs/windows-amd64/libtantivy_go.a)
 
 install-all: \
     install-linux-amd64-musl \
