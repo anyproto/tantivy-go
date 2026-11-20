@@ -4,7 +4,7 @@
 package tantivy_go
 
 /*
-#cgo windows,amd64 LDFLAGS: -ltantivy_go -lm -pthread -lws2_32 -lbcrypt -lntdll -luserenv
+#cgo windows,amd64 LDFLAGS: -ltantivy_go -lm -pthread -lws2_32 -lbcrypt -lntdll -luserenv -lsynchronization
 #cgo darwin,amd64 LDFLAGS: -ltantivy_go -lm -pthread -framework CoreFoundation -framework Security -ldl
 #cgo darwin,arm64 LDFLAGS: -ltantivy_go -lm -pthread -ldl
 #cgo ios,arm64 LDFLAGS: -ltantivy_go -lm -pthread -ldl
